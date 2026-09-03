@@ -1,0 +1,25 @@
+# Rebuildable Inno project state and generated output
+/Library/
+/Logs/
+/Temp/
+/Builds/
+
+# Generated IDE projections
+/*.csproj
+/*.sln
+/*.sln.iml
+/.idea/
+/.vs/
+
+# Per-user Editor state and preferences
+/editor.ini
+/EditorSettings.inno
+
+# Operating-system and editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Assets and their .imeta sidecars are authored project content and remain tracked.
