@@ -1,4 +1,4 @@
-# Rebuildable Inno project state and generated output
+# Inno-generated caches, logs, temporary data, and exported products
 /Library/
 /Logs/
 /Temp/
@@ -7,19 +7,61 @@
 # Generated IDE projections
 /*.csproj
 /*.sln
+/*.slnx
 /*.sln.iml
 /.idea/
 /.vs/
+/.vscode/
+/.fleet/
 
-# Per-user Editor state and preferences
+# .NET build and test output
+**/[Bb]in/
+**/[Oo]bj/
+/artifacts/
+/TestResults/
+/BenchmarkDotNet.Artifacts/
+coverage*.json
+coverage*.xml
+coverage*.info
+*.coverage
+*.coveragexml
+
+# Per-user IDE and Inno Editor state
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+*.userprefs
 /editor.ini
 /EditorSettings.inno
 
-# Operating-system and editor noise
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Operating-system metadata
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Editor backups, swap files, and crash dumps
 *.swp
 *.swo
 *~
+*.bak
+*.orig
+*.rej
+*.tmp
+mono_crash.*
 
 # Assets and their .imeta sidecars are authored project content and remain tracked.
+# ProjectSettings.inno and BuildProfile.inno are also intentionally tracked when present.
