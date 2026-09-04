@@ -42,7 +42,6 @@ public sealed class Rendering2DProjectSettingsEditor : ProjectSettingEditor<Rend
 public sealed class Rendering2DSortingLayersProjectSettingsEditor
     : ProjectSettingEditor<Rendering2DProjectSettings>
 {
-    private string m_newId = "inno.rendering.2d.layer";
     private string m_newName = "Layer";
     private int m_newOrder;
 
@@ -54,7 +53,7 @@ public sealed class Rendering2DSortingLayersProjectSettingsEditor
 
     /// <inheritdoc />
     public override string description
-        => "Configure stable sprite sorting-layer identities and their global order.";
+        => "Configure sorting-layer names and order. IDs are generated automatically as projectId.name.";
 
     /// <inheritdoc />
     protected override void OnDraw(Rendering2DProjectSettings setting)
@@ -65,25 +64,18 @@ public sealed class Rendering2DSortingLayersProjectSettingsEditor
         {
             SortingLayer2DDefinition layer = layers[index];
             ImGui.PushId(index);
-            string id = layer.id ?? string.Empty;
             string name = layer.name ?? string.Empty;
             int order = layer.order;
-            changed |= ImGui.InputText("ID", ref id, 256);
             changed |= ImGui.InputText("Name", ref name, 128);
             changed |= ImGui.InputInt("Order", ref order);
-            if (ImGui.Button("Remove"))
+            if (index > 0 && ImGui.Button("Remove"))
             {
                 layers.RemoveAt(index--);
                 changed = true;
             }
             else
             {
-                layers[index] = new SortingLayer2DDefinition
-                {
-                    id = id,
-                    name = name,
-                    order = order
-                };
+                layers[index] = layer.With(name, order);
             }
             ImGui.PopId();
             ImGui.Separator();
@@ -91,14 +83,11 @@ public sealed class Rendering2DSortingLayersProjectSettingsEditor
         if (changed)
             TryApplyLayers(setting, layers);
 
-        ImGui.InputText("New ID", ref m_newId, 256);
         ImGui.InputText("New Name", ref m_newName, 128);
         ImGui.InputInt("New Order", ref m_newOrder);
-        if (ImGui.Button("Add Sorting Layer")
-            && !string.IsNullOrWhiteSpace(m_newId)
-            && !string.IsNullOrWhiteSpace(m_newName))
+        if (ImGui.Button("Add Sorting Layer") && !string.IsNullOrWhiteSpace(m_newName))
         {
-            layers.Add(new SortingLayer2DDefinition(m_newId, m_newName, m_newOrder));
+            layers.Add(new SortingLayer2DDefinition(m_newName, m_newOrder));
             TryApplyLayers(setting, layers);
         }
     }

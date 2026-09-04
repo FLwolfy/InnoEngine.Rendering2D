@@ -22,9 +22,9 @@ public sealed class TilemapRenderer2D : GameBehavior
     [SerializableProperty]
     public Color color { get; set; } = Color.WHITE;
 
-    /// <summary>Gets or sets the stable project sorting-layer identity.</summary>
+    /// <summary>Gets or sets the stable project-local sorting-layer name.</summary>
     [SerializableProperty]
-    public string sortingLayerId { get; set; } = "inno.rendering.2d.default";
+    public string sortingLayer { get; set; } = "default";
 
     /// <summary>Gets or sets base order before each cell's tilemap layer is applied.</summary>
     [SerializableProperty]

@@ -504,7 +504,7 @@ internal static class Rendering2DFrameCollector
         MaterialAsset material = sprite.material ?? defaultMaterial;
         Rendering2DSortKey sortKey = new(
             1,
-            settings.GetSortingLayerOrder(sprite.sortingLayerId),
+            settings.GetSortingLayerOrder(sprite.sortingLayer),
             sprite.orderInLayer,
             owner.transform.worldPosition.z,
             sequence++);
@@ -586,7 +586,7 @@ internal static class Rendering2DFrameCollector
                 lights);
             Rendering2DSortKey sortKey = new(
                 1,
-                settings.GetSortingLayerOrder(renderer.sortingLayerId),
+                settings.GetSortingLayerOrder(renderer.sortingLayer),
                 renderer.orderInLayer + cell.layer,
                 owner.transform.worldPosition.z,
                 sequence++);

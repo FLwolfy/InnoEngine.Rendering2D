@@ -35,7 +35,7 @@ coverage*.info
 *.DotSettings.user
 *.userprefs
 /editor.ini
-/EditorSettings.inno
+/Settings.Editor.inno
 
 # Local environment and secrets
 .env
@@ -64,4 +64,4 @@ $RECYCLE.BIN/
 mono_crash.*
 
 # Assets and their .imeta sidecars are authored project content and remain tracked.
-# ProjectSettings.inno and BuildProfile.inno are also intentionally tracked when present.
+# Settings.Project.inno and Settings.Build.inno are also intentionally tracked when present.

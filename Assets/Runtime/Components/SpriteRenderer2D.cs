@@ -110,9 +110,9 @@ public sealed class SpriteRenderer2D : GameBehavior
     [SerializableProperty]
     public bool flipY { get; set; }
 
-    /// <summary>Gets or sets the stable project sorting-layer identity.</summary>
+    /// <summary>Gets or sets the stable project-local sorting-layer name.</summary>
     [SerializableProperty]
-    public string sortingLayerId { get; set; } = "inno.rendering.2d.default";
+    public string sortingLayer { get; set; } = "default";
 
     /// <summary>Gets or sets order within the selected sorting layer.</summary>
     [SerializableProperty]

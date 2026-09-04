@@ -70,7 +70,7 @@ SpriteRenderer2D sprite = spriteObject.AddComponent<SpriteRenderer2D>();
 sprite.primitive = SpritePrimitive2D.Circle;
 sprite.color = new Color(0.2f, 0.65f, 1f, 1f);
 sprite.size = new Vector2(2f, 2f);
-sprite.sortingLayerId = "inno.rendering.2d.default";
+sprite.sortingLayer = "default";
 ```
 
 Assigning a valid atlas region or direct `texture` takes precedence over `primitive`. Set `primitive` to
@@ -81,6 +81,11 @@ textured sprites.
 Sprite density and the pixel-perfect camera grid both use the project-wide `Default Pixels Per Unit` value under
 Project Settings → Rendering 2D; `Camera2D` does not own a second density value. A SpriteRenderer can still
 override that default when its source artwork intentionally uses a different density.
+
+Sorting Layer authoring accepts only a display name and order. Creation derives an immutable project-local key,
+and components serialize that key in `sortingLayer`; the complete logical identity is resolved as
+`projectId.name` through the current Project Identity. Renaming Project ID therefore does not rewrite sprites,
+tilemaps, scenes, or Plugin contributions, and no full ID field is exposed in the Settings UI.
 
 One deterministic camera stack whose cameras enable `renderToBackbuffer` is submitted automatically. For an offscreen target, call
 `Rendering2DRenderer.CreateRequest` with an explicit `Rendering2DSceneScope`, or use

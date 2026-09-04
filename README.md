@@ -111,7 +111,7 @@ For the full feature contract, authoring APIs, camera composition rules, custom 
 
 ## Version-control notes
 
-`Assets/` and every `.imeta` sidecar are authored source and must remain under version control. `ProjectSettings.inno` and `BuildProfile.inno`, when present, are also project-level source of truth. Generated caches, exported builds, IDE projections, logs, and per-user editor preferences are excluded by `.gitignore`.
+`Assets/` and every `.imeta` sidecar are authored source and must remain under version control. `Settings.Project.inno` and `Settings.Build.inno`, when present, are also project-level source of truth. Generated caches, exported builds, IDE projections, logs, and per-user editor preferences are excluded by `.gitignore`.
 
 ## License
 
