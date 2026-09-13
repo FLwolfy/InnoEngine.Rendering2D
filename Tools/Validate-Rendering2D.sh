@@ -62,8 +62,8 @@ grep -Eq "Rendering2D Editor Game View resize gate passed: 96 consecutive Metal 
 grep -Eq "Rendering2D steady-state GPU resource gate armed after 120 rendered frames" "$acceptance_log"
 grep -Eq "Smoke frame limit reached after ${smoke_frames} frame\(s\)\." "$acceptance_log"
 
-if grep -Eq "BGFX FATAL|Unhandled exception|Teardown failure|unknown stable type|\[Warn\][[:space:]]+ASSET-REFERENCE" "$acceptance_log"; then
-    echo "Metal GPU acceptance log contains a fatal, teardown, or tombstone-reference failure." >&2
+if grep -Eq "BGFX FATAL|Unhandled exception|Teardown failure|unknown stable type|Asset import for .* failed:|\[Warn\][[:space:]]+ASSET-REFERENCE" "$acceptance_log"; then
+    echo "Metal GPU acceptance log contains an import, fatal, teardown, or tombstone-reference failure." >&2
     exit 1
 fi
 

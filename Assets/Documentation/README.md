@@ -240,3 +240,19 @@ development and its own read-only Plugin mount after installation without hard-c
 Consumers install only complete `.iplugin` files under `<Project>/Plugins`; unpacked folders and `.zip` files
 are rejected. Plugin code runs with the same native process permissions as project scripts; the collectible
 load context is not a security sandbox.
+
+## Viewport participation and reload ownership
+
+Scene View scope caching tracks both content identity and each scene's immutable System list. Adding,
+removing, replacing, undoing or redoing a `Rendering2DSceneSystem` changes participation on the next
+viewport evaluation, including scenes that previously had no rendering system. Stable scope reads reuse
+the cached snapshot without managed allocation.
+
+Pipeline settings caches resolve the asset through its original Identity owner and discard retired owners.
+They do not attach collectible Plugin values to host-owned assets through a static `ConditionalWeakTable`.
+The engine also retires cached Pipeline generations when their asset owner exits, so a stopped Play session
+cannot retain Plugin assemblies during Reload Plugins. The full GC unload barrier remains mandatory.
+
+An installed `.iplugin` is a source snapshot, not a live link to this development repository. After source
+updates, export the Plugin again and replace the consumer project's installed package. Restart an Editor
+that has already entered a terminal generation-retirement fault before testing the updated build.

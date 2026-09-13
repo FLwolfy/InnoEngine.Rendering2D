@@ -120,11 +120,12 @@ internal readonly record struct Rendering2DSceneEntry(
     Rendering2DSceneSnapshot snapshot);
 
 /// <summary>
-/// Reuses a 2D scene scope while the host-selected content generations remain unchanged.
+/// Reuses a 2D scene scope while host-selected content generations and scene system membership remain unchanged.
 /// </summary>
 public sealed class Rendering2DSceneScopeCache
 {
     private Identity[] m_roots = [];
+    private IReadOnlyList<GameSystem>?[] m_systems = [];
     private Rendering2DSceneScope? m_scope;
 
     /// <summary>
@@ -132,7 +133,7 @@ public sealed class Rendering2DSceneScopeCache
     /// the stable-content path.
     /// </summary>
     /// <param name="content">Frame-scoped host content.</param>
-    /// <returns>The reusable scope matching the current root generations.</returns>
+    /// <returns>The reusable scope matching the current root generations and system snapshots.</returns>
     public Rendering2DSceneScope Get(ContentReadScope content)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -141,15 +142,20 @@ public sealed class Rendering2DSceneScopeCache
         {
             var scenes = new List<GameScene>(roots.Count);
             var capturedRoots = new Identity[roots.Count];
+            var capturedSystems = new IReadOnlyList<GameSystem>?[roots.Count];
             for (int index = 0; index < roots.Count; index++)
             {
                 Identity root = roots[index];
                 capturedRoots[index] = root;
                 GameScene? scene = root.Resolve<GameScene>();
                 if (scene is not null && !scene.isDestroyed)
+                {
+                    capturedSystems[index] = scene.GetSystems();
                     scenes.Add(scene);
+                }
             }
             m_roots = capturedRoots;
+            m_systems = capturedSystems;
             m_scope = new Rendering2DSceneScope(scenes);
         }
         else
@@ -177,6 +183,12 @@ public sealed class Rendering2DSceneScopeCache
             {
                 return false;
             }
+            GameScene? scene = current.Resolve<GameScene>();
+            IReadOnlyList<GameSystem>? systems = scene is not null && !scene.isDestroyed ? scene.GetSystems() : null;
+            // GetSystems returns a cached immutable snapshot until membership or order changes.
+            // Include non-participating roots so adding the first renderer also invalidates the scope.
+            if (!ReferenceEquals(m_systems[index], systems))
+                return false;
         }
         return true;
     }
@@ -186,7 +198,7 @@ public sealed class Rendering2DSceneScopeCache
 public static class Rendering2DRenderer
 {
     private static readonly ConditionalWeakTable<Camera2D, ViewportFrameCache> S_VIEWPORT_FRAMES = new();
-    private static readonly ConditionalWeakTable<RenderPipelineAsset, PipelineSettingsCache> S_PIPELINE_SETTINGS = new();
+    private static readonly List<PipelineSettingsCache> S_PIPELINE_SETTINGS = [];
     private static readonly object S_SETTINGS_LOCK = new();
     private static Guid s_settingsOwner;
     private static long s_settingsRevision = -1;
@@ -228,9 +240,25 @@ public static class Rendering2DRenderer
         get
         {
             RenderPipelineAsset pipeline = ResolvePipeline();
-            PipelineSettingsCache cache = S_PIPELINE_SETTINGS.GetValue(pipeline, static _ => new());
-            lock (cache)
+            lock (S_SETTINGS_LOCK)
             {
+                PipelineSettingsCache? cache = null;
+                for (int index = S_PIPELINE_SETTINGS.Count - 1; index >= 0; index--)
+                {
+                    PipelineSettingsCache candidate = S_PIPELINE_SETTINGS[index];
+                    RenderPipelineAsset? owner = candidate.identity.Resolve<RenderPipelineAsset>();
+                    if (owner is null)
+                        S_PIPELINE_SETTINGS.RemoveAt(index);
+                    else if (ReferenceEquals(owner, pipeline))
+                        cache = candidate;
+                }
+                if (cache is null)
+                {
+                    // A host-owned key in a static ephemeron table can keep its collectible value
+                    // and the table's defining assembly alive. Resolve ownership through Identity instead.
+                    cache = new PipelineSettingsCache(pipeline.identity);
+                    S_PIPELINE_SETTINGS.Add(cache);
+                }
                 if (cache.value is null || cache.version != pipeline.contentVersion)
                 {
                     var value = new Rendering2DPipelineSettings();
@@ -243,8 +271,9 @@ public static class Rendering2DRenderer
         }
     }
 
-    private sealed class PipelineSettingsCache
+    private sealed class PipelineSettingsCache(Identity identity)
     {
+        internal readonly Identity identity = identity;
         internal long version = -1;
         internal Rendering2DPipelineSettings? value;
     }
