@@ -40,26 +40,37 @@ public sealed class Rendering2DSceneSystem : GameSystem
         var cameras = new List<Camera2D>();
         var drawables = new List<Rendering2DDrawable>();
         var lights = new List<Light2D>();
+        var shadowCasters = new List<ShadowCaster2D>();
+        var masks = new List<Rendering2DMask>();
         for (int index = 0; index < objects.Count; index++)
         {
             GameObject gameObject = objects[index];
             _ = gameObject.TryGetComponent<Camera2D>(out Camera2D? camera);
             _ = gameObject.TryGetComponent<SpriteRenderer2D>(out SpriteRenderer2D? sprite);
             _ = gameObject.TryGetComponent<TilemapRenderer2D>(out TilemapRenderer2D? tilemap);
+            _ = gameObject.TryGetComponent<ParticleSystem2D>(out ParticleSystem2D? particles);
             _ = gameObject.TryGetComponent<Light2D>(out Light2D? light);
+            _ = gameObject.TryGetComponent<ShadowCaster2D>(out ShadowCaster2D? shadowCaster);
+            _ = gameObject.TryGetComponent<SpriteMask2D>(out SpriteMask2D? mask);
             if (camera is not null)
                 cameras.Add(camera);
-            if (sprite is not null || tilemap is not null)
-                drawables.Add(new Rendering2DDrawable(gameObject, sprite, tilemap));
+            if (sprite is not null || tilemap is not null || particles is not null)
+                drawables.Add(new Rendering2DDrawable(gameObject, sprite, tilemap, particles));
             if (light is not null)
                 lights.Add(light);
+            if (shadowCaster is not null)
+                shadowCasters.Add(shadowCaster);
+            if (mask is not null)
+                masks.Add(new Rendering2DMask(gameObject, mask));
         }
 
         m_indexedObjects = objects;
         m_snapshot = new Rendering2DSceneSnapshot(
             [.. cameras],
             [.. drawables],
-            [.. lights]);
+            [.. lights],
+            [.. shadowCasters],
+            [.. masks]);
         return m_snapshot;
     }
 
@@ -91,12 +102,17 @@ public sealed class Rendering2DSceneSystem : GameSystem
 internal readonly record struct Rendering2DSceneSnapshot(
     Camera2D[] cameras,
     Rendering2DDrawable[] drawables,
-    Light2D[] lights)
+    Light2D[] lights,
+    ShadowCaster2D[] shadowCasters,
+    Rendering2DMask[] masks)
 {
-    internal static Rendering2DSceneSnapshot empty { get; } = new([], [], []);
+    internal static Rendering2DSceneSnapshot empty { get; } = new([], [], [], [], []);
 }
 
 internal readonly record struct Rendering2DDrawable(
     GameObject owner,
     SpriteRenderer2D? sprite,
-    TilemapRenderer2D? tilemap);
+    TilemapRenderer2D? tilemap,
+    ParticleSystem2D? particles);
+
+internal readonly record struct Rendering2DMask(GameObject owner, SpriteMask2D mask);

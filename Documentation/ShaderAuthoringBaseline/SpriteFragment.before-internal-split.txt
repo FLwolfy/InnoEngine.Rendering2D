@@ -1,0 +1,201 @@
+// Composes sprite, lighting and post-processing contributions through explicit graph inputs.
+void Evaluate(vec2 v_texcoord0, vec4 v_color0, float v_shape, vec2 v_effectStep, vec2 v_worldPosition, vec4 v_effectData0,
+    sampler2D s_spriteTexture, sampler2D s_effectTexture, sampler2D s_normalTexture, sampler2D s_emissionTexture, sampler2D s_lightColor0, sampler2D s_lightColor1, sampler2D s_lightColor2, sampler2D s_lightColor3, sampler2D s_lightDirection0, sampler2D s_lightDirection1, sampler2D s_lightDirection2, sampler2D s_lightDirection3,
+    vec4 u_lightSampling, vec4 u_spriteMaterial, vec4 fragmentCoordinate, vec4 viewRectangle, vec4 viewTexel,
+    out vec4 color0, out vec4 color1)
+{
+    color0 = vec4(0.0);
+    color1 = vec4(0.0);
+    if (v_shape < -30000.0)
+    {
+        if (v_shape < -30999.0)
+        {
+            color0 = vec4(0.0);
+            color1 = vec4(0.0);
+            return;
+        }
+
+        float attenuation = 1.0;
+        vec2 toFragment = v_worldPosition - v_effectData0.xy;
+        float distanceToLight = length(toFragment);
+        if (v_shape > -30001.5)
+        {
+            attenuation = 1.0;
+        }
+        else if (v_shape > -30004.5)
+        {
+            attenuation = pow(
+                max(1.0 - distanceToLight / max(v_effectStep.x, 0.0001), 0.0),
+                max(v_effectStep.y, 0.01));
+            if (v_shape > -30003.5 && v_shape < -30002.5 && distanceToLight > 0.0001)
+            {
+                float cone = dot(toFragment / distanceToLight, v_effectData0.zw);
+                attenuation *= clamp(
+                    (cone - v_color0.a) / max(1.0 - v_color0.a, 0.0001),
+                    0.0,
+                    1.0);
+            }
+        }
+
+        vec2 cookieUv = v_shape < -30003.5
+            ? (toFragment / max(v_effectStep.x * 2.0, 0.0001) + 0.5)
+            : v_texcoord0;
+        vec4 cookie = texture2D(s_spriteTexture, cookieUv);
+        float weightedAttenuation = attenuation * cookie.a;
+        vec3 lightColor = v_color0.rgb * cookie.rgb * weightedAttenuation;
+        float lightWeight = dot(lightColor, vec3(0.2126, 0.7152, 0.0722));
+        vec2 lightDirection = v_shape > -30001.5
+            ? -v_effectData0.zw
+            : (distanceToLight > 0.0001 ? -toFragment / distanceToLight : vec2(0.0, 1.0));
+        color0 = vec4(lightColor, weightedAttenuation);
+        color1 = vec4(
+            lightDirection * lightWeight,
+            lightWeight,
+            lightWeight * u_spriteMaterial.x);
+        return;
+    }
+    if (v_shape < -23000.0)
+    {
+        vec4 highFrequency = texture2D(s_effectTexture, v_texcoord0);
+        vec3 lowFrequency = vec3(0.0);
+        lowFrequency += texture2D(s_spriteTexture, v_texcoord0 + vec2(-1.0, -1.0) * v_effectStep).rgb;
+        lowFrequency += texture2D(s_spriteTexture, v_texcoord0 + vec2( 1.0, -1.0) * v_effectStep).rgb;
+        lowFrequency += texture2D(s_spriteTexture, v_texcoord0 + vec2(-1.0,  1.0) * v_effectStep).rgb;
+        lowFrequency += texture2D(s_spriteTexture, v_texcoord0 + vec2( 1.0,  1.0) * v_effectStep).rgb;
+        lowFrequency *= 0.25;
+        color0 = vec4(highFrequency.rgb + lowFrequency * v_color0.r, highFrequency.a);
+        return;
+    }
+    if (v_shape < -12000.0)
+    {
+        vec3 bloom = vec3(0.0);
+        vec3 sample0 = texture2D(s_spriteTexture, v_texcoord0 + vec2(-1.0, -1.0) * v_effectStep).rgb;
+        vec3 sample1 = texture2D(s_spriteTexture, v_texcoord0 + vec2( 0.0, -1.0) * v_effectStep).rgb;
+        vec3 sample2 = texture2D(s_spriteTexture, v_texcoord0 + vec2( 1.0, -1.0) * v_effectStep).rgb;
+        vec3 sample3 = texture2D(s_spriteTexture, v_texcoord0 + vec2(-1.0,  0.0) * v_effectStep).rgb;
+        vec3 sample4 = texture2D(s_spriteTexture, v_texcoord0 + vec2( 1.0,  0.0) * v_effectStep).rgb;
+        vec3 sample5 = texture2D(s_spriteTexture, v_texcoord0 + vec2(-1.0,  1.0) * v_effectStep).rgb;
+        vec3 sample6 = texture2D(s_spriteTexture, v_texcoord0 + vec2( 0.0,  1.0) * v_effectStep).rgb;
+        vec3 sample7 = texture2D(s_spriteTexture, v_texcoord0 + vec2( 1.0,  1.0) * v_effectStep).rgb;
+        float luminance0 = dot(sample0, vec3(0.2126, 0.7152, 0.0722));
+        float luminance1 = dot(sample1, vec3(0.2126, 0.7152, 0.0722));
+        float luminance2 = dot(sample2, vec3(0.2126, 0.7152, 0.0722));
+        float luminance3 = dot(sample3, vec3(0.2126, 0.7152, 0.0722));
+        float luminance4 = dot(sample4, vec3(0.2126, 0.7152, 0.0722));
+        float luminance5 = dot(sample5, vec3(0.2126, 0.7152, 0.0722));
+        float luminance6 = dot(sample6, vec3(0.2126, 0.7152, 0.0722));
+        float luminance7 = dot(sample7, vec3(0.2126, 0.7152, 0.0722));
+        float threshold = max(v_color0.g, 0.0);
+        bloom += sample0 * (max(luminance0 - threshold, 0.0) / max(luminance0, 0.0001));
+        bloom += sample1 * (max(luminance1 - threshold, 0.0) / max(luminance1, 0.0001));
+        bloom += sample2 * (max(luminance2 - threshold, 0.0) / max(luminance2, 0.0001));
+        bloom += sample3 * (max(luminance3 - threshold, 0.0) / max(luminance3, 0.0001));
+        bloom += sample4 * (max(luminance4 - threshold, 0.0) / max(luminance4, 0.0001));
+        bloom += sample5 * (max(luminance5 - threshold, 0.0) / max(luminance5, 0.0001));
+        bloom += sample6 * (max(luminance6 - threshold, 0.0) / max(luminance6, 0.0001));
+        bloom += sample7 * (max(luminance7 - threshold, 0.0) / max(luminance7, 0.0001));
+        color0 = vec4(bloom * (v_color0.r / 8.0), 1.0);
+        return;
+    }
+    if (v_shape < -0.5)
+    {
+        bool toneMapping = u_spriteMaterial.x > 0.5;
+        bool hasBloom = u_spriteMaterial.y > 0.5;
+        float pixelSize = u_spriteMaterial.z;
+        vec2 uv = v_texcoord0;
+        if (pixelSize > 1.5)
+            uv = (floor(uv / v_effectStep) + 0.5) * v_effectStep;
+        vec4 source = texture2D(s_spriteTexture, uv);
+        vec3 color = source.rgb;
+        if (hasBloom)
+            color += texture2D(s_effectTexture, uv).rgb;
+        color *= exp2(v_color0.r);
+        color = (color - 0.5) * max(v_color0.g, 0.0) + 0.5;
+        float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
+        color = mix(vec3(luminance), color, max(v_color0.b, 0.0));
+        if (toneMapping)
+        {
+            color = clamp(
+                (color * (2.51 * color + 0.03))
+                    / (color * (2.43 * color + 0.59) + 0.14),
+                0.0,
+                1.0);
+        }
+        vec2 vignettePosition = (uv - 0.5) * 2.0;
+        float vignetteWeight = 1.0 - clamp(dot(vignettePosition, vignettePosition) * 0.5, 0.0, 1.0);
+        color *= mix(1.0, vignetteWeight, clamp(v_color0.a, 0.0, 1.0));
+        color0 = vec4(color, source.a);
+        return;
+    }
+
+    vec2 shapePosition = v_texcoord0 * 2.0 - 1.0;
+    float shapeAlpha = 1.0;
+    if (v_shape > 1.5 && v_shape < 2.5)
+    {
+        float distanceToEdge = 1.0 - length(shapePosition);
+        shapeAlpha = smoothstep(-fwidth(distanceToEdge), fwidth(distanceToEdge), distanceToEdge);
+    }
+    else if (v_shape > 2.5 && v_shape < 3.5)
+    {
+        vec2 trianglePoint = vec2(shapePosition.x, -shapePosition.y);
+        float edge = max(
+            trianglePoint.y - 1.0,
+            max(-trianglePoint.y - 2.0 * trianglePoint.x - 1.0,
+                -trianglePoint.y + 2.0 * trianglePoint.x - 1.0));
+        shapeAlpha = 1.0 - smoothstep(-fwidth(edge), fwidth(edge), edge);
+    }
+    else if (v_shape > 3.5 && v_shape < 4.5)
+    {
+        vec2 capsulePoint = vec2(shapePosition.x, max(abs(shapePosition.y) - 0.5, 0.0));
+        float distanceToEdge = 0.5 - length(capsulePoint);
+        shapeAlpha = smoothstep(-fwidth(distanceToEdge), fwidth(distanceToEdge), distanceToEdge);
+    }
+
+    vec4 source = v_shape < 0.5 ? texture2D(s_spriteTexture, v_texcoord0) : vec4(1.0);
+    vec4 color = source * v_color0;
+    float lightMask = floor(u_spriteMaterial.a + 0.5);
+    if (lightMask > 0.5)
+    {
+        vec2 lightUv = (fragmentCoordinate.xy - viewRectangle.xy) * viewTexel.xy;
+        if (u_lightSampling.x > 0.5)
+            lightUv.y = 1.0 - lightUv.y;
+        vec3 lightColor = vec3(0.0);
+        vec4 lightDirection = vec4(0.0);
+        if (mod(floor(lightMask), 2.0) > 0.5)
+        {
+            lightColor += texture2D(s_lightColor0, lightUv).rgb;
+            lightDirection += texture2D(s_lightDirection0, lightUv);
+        }
+        if (mod(floor(lightMask / 2.0), 2.0) > 0.5)
+        {
+            lightColor += texture2D(s_lightColor1, lightUv).rgb;
+            lightDirection += texture2D(s_lightDirection1, lightUv);
+        }
+        if (mod(floor(lightMask / 4.0), 2.0) > 0.5)
+        {
+            lightColor += texture2D(s_lightColor2, lightUv).rgb;
+            lightDirection += texture2D(s_lightDirection2, lightUv);
+        }
+        if (mod(floor(lightMask / 8.0), 2.0) > 0.5)
+        {
+            lightColor += texture2D(s_lightColor3, lightUv).rgb;
+            lightDirection += texture2D(s_lightDirection3, lightUv);
+        }
+        vec3 normal = normalize(texture2D(s_normalTexture, v_texcoord0).xyz * 2.0 - 1.0);
+        vec2 planarDirection = lightDirection.b > 0.0001
+            ? lightDirection.rg / lightDirection.b
+            : vec2(0.0, 1.0);
+        vec3 direction = normalize(vec3(planarDirection * 0.5, 1.0));
+        float normalAmount = lightDirection.b > 0.0001
+            ? clamp(lightDirection.a / lightDirection.b, 0.0, 1.0)
+            : 0.0;
+        float normalLighting = 0.5 + 0.5 * max(dot(normal, direction), 0.0);
+        color.rgb *= lightColor * mix(1.0, normalLighting, normalAmount);
+    }
+    color.rgb += texture2D(s_emissionTexture, v_texcoord0).rgb * u_spriteMaterial.rgb;
+    color.a *= shapeAlpha;
+    if (color.a <= max(0.001, v_effectStep.x))
+        discard;
+    color0 = color;
+}
+

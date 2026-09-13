@@ -7,11 +7,11 @@ using InnoEngine.Serialization;
 
 namespace Inno.Rendering2D;
 
-/// <summary>Defines one timed atlas-region frame and optional stable gameplay event.</summary>
+/// <summary>Defines one timed sprite frame and optional stable gameplay event.</summary>
 public struct SpriteAnimationFrame2D
 {
-    /// <summary>Gets or sets the atlas region identity.</summary>
-    public string spriteId { get; set; }
+    /// <summary>Gets or sets the stable sprite reference displayed by this frame.</summary>
+    public SpriteReference2D sprite { get; set; }
 
     /// <summary>Gets or sets positive frame duration in seconds.</summary>
     public float duration { get; set; }
@@ -38,10 +38,6 @@ public struct SpriteAnimationClip2D
 public sealed class SpriteAnimation2DAsset : AssetObject
 {
     private SpriteAnimationClip2D[] m_clips = [];
-
-    /// <summary>Gets or sets the atlas referenced by every frame.</summary>
-    [SerializableProperty]
-    public SpriteAtlas2DAsset? atlas { get; set; }
 
     /// <summary>Gets or sets all stable clips.</summary>
     [SerializableProperty]
@@ -80,7 +76,7 @@ public sealed class SpriteAnimation2DAsset : AssetObject
         if (values.Select(static value => value.id).Distinct(StringComparer.Ordinal).Count() != values.Length)
             throw new ArgumentException("Animation clip IDs must be unique.", nameof(clips));
         if (values.Any(static value => value.frames is null || value.frames.Length == 0
-            || value.frames.Any(static frame => string.IsNullOrWhiteSpace(frame.spriteId) || frame.duration <= 0f)))
+            || value.frames.Any(static frame => !frame.sprite.isAssigned || frame.duration <= 0f)))
         {
             throw new ArgumentException("Every animation clip requires valid positive-duration frames.", nameof(clips));
         }

@@ -5,6 +5,7 @@ using System.Linq;
 using InnoEngine.Reflection;
 using InnoEngine.Serialization;
 using InnoEngine.Settings;
+using InnoEngine.Rendering;
 
 namespace Inno.Rendering2D;
 
@@ -145,6 +146,12 @@ public sealed class Rendering2DProjectSettings : ISerializable
         get => m_sortingLayers;
         set => SetSortingLayers(value ?? []);
     }
+
+    /// <summary>
+    /// Gets or sets the authoritative Pipeline asset used by Scene, Game and Player requests.
+    /// </summary>
+    [SerializableProperty]
+    public RenderPipelineAsset? pipeline { get; set; }
 
     /// <summary>Gets the effective order of a project-local sorting layer.</summary>
     /// <param name="localId">The stable project-independent identity.</param>

@@ -1,0 +1,8 @@
+// Samples the per-instance Sprite bindings; primitives retain their analytic coverage in the surface output.
+void Evaluate(vec2 uv, float primitive, sampler2D s_spriteTexture, sampler2D s_normalTexture, sampler2D s_emissionTexture,
+    out vec4 color, out vec3 normal, out vec3 emission)
+{
+    color = primitive < 0.5 ? texture2D(s_spriteTexture, uv) : vec4(1.0);
+    normal = texture2D(s_normalTexture, uv).xyz * 2.0 - 1.0;
+    emission = texture2D(s_emissionTexture, uv).rgb;
+}

@@ -1,0 +1,12 @@
+// Four independent corners, light origin/direction, range/falloff, and radiance/cone.
+void Evaluate(vec2 a_position, vec4 i_data0, vec4 i_data1, vec4 i_data2, vec4 i_data3,
+    vec4 i_data4, mat4 viewProjection, out vec4 position, out vec2 uv, out vec2 worldPosition,
+    out vec4 originDirection, out vec4 kindRangeFalloff, out vec4 radianceCone)
+{
+    worldPosition = mix(mix(i_data0.xy, i_data0.zw, a_position.x), mix(i_data1.xy, i_data1.zw, a_position.x), a_position.y);
+    position = mul(viewProjection, vec4(worldPosition, i_data3.x, 1.0));
+    uv = a_position;
+    originDirection = i_data2;
+    kindRangeFalloff = i_data3;
+    radianceCone = i_data4;
+}

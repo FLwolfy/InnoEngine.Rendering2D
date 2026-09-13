@@ -1,0 +1,130 @@
+name: Rendering2D GPU Acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      engine_ref:
+        description: InnoEngine branch, tag, or commit to validate
+        required: true
+        default: master
+  pull_request:
+    paths:
+      - ".github/workflows/rendering2d-gpu.yml"
+      - "Assets/**"
+      - "Tools/**"
+      - "Settings.*.inno"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/rendering2d-gpu.yml"
+      - "Assets/**"
+      - "Tools/**"
+      - "Settings.*.inno"
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+
+jobs:
+  windows-gpu:
+    name: Windows x64 / ${{ matrix.backend }}
+    runs-on: [self-hosted, Windows, X64, gpu]
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [d3d11, d3d12, vulkan]
+
+    steps:
+      - name: Checkout Rendering2D
+        uses: actions/checkout@v4
+        with:
+          path: Rendering2D
+
+      - name: Checkout matching InnoEngine
+        uses: actions/checkout@v4
+        with:
+          repository: FLwolfy/InnoEngine
+          ref: ${{ inputs.engine_ref || 'master' }}
+          submodules: recursive
+          path: InnoEngine
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Install MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Run shader, frame, allocation, and GPU acceptance
+        shell: pwsh
+        working-directory: Rendering2D
+        run: >-
+          ./Tools/Validate-Rendering2D.ps1
+          -EngineRoot ../InnoEngine
+          -Backend ${{ matrix.backend }}
+          -SmokeFrames 600
+          -PrepareEngine
+
+      - name: Upload GPU acceptance log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendering2d-windows-${{ matrix.backend }}
+          path: Rendering2D/Logs/**
+          if-no-files-found: warn
+
+  metal-gpu:
+    name: macOS arm64 / Metal
+    runs-on: [self-hosted, macOS, ARM64, gpu]
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout Rendering2D
+        uses: actions/checkout@v4
+        with:
+          path: Rendering2D
+
+      - name: Checkout matching InnoEngine
+        uses: actions/checkout@v4
+        with:
+          repository: FLwolfy/InnoEngine
+          ref: ${{ inputs.engine_ref || 'master' }}
+          submodules: recursive
+          path: InnoEngine
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Build native editor dependencies
+        shell: bash
+        working-directory: InnoEngine
+        run: |
+          dotnet run --project build/toolchains/Inno.Build.Toolchains.Sdl3 -- build --config debug
+          dotnet run --project build/toolchains/Inno.Build.Toolchains.MiniAudio -- build --config debug
+          dotnet run --project build/toolchains/Inno.Build.Toolchains.ImGui -- build --config debug
+          dotnet run --project build/toolchains/Inno.Build.Toolchains.ImGuizmo -- build --config debug
+          dotnet run --project build/toolchains/Inno.Build.Toolchains.Bgfx -- native --config debug
+          dotnet run --project build/toolchains/Inno.Build.Toolchains.Bgfx -- tools --config debug
+
+      - name: Run Metal shader, frame, allocation, and GPU acceptance
+        shell: bash
+        working-directory: Rendering2D
+        env:
+          DOTNET_COMMAND: dotnet
+        run: ./Tools/Validate-Rendering2D.sh ../InnoEngine 600
+
+      - name: Upload GPU acceptance log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendering2d-metal
+          path: Rendering2D/Logs/**
+          if-no-files-found: warn

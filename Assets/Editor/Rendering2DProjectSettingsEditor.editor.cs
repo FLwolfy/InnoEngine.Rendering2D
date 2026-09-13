@@ -1,7 +1,9 @@
 using System;
+using InnoEngine.Assets;
+using InnoEngine.Rendering;
+using InnoEngine.Settings;
 using InnoEditor.ImGui;
 using InnoEditor.Settings;
-using InnoEngine.Settings;
 
 namespace Inno.Rendering2D;
 
@@ -9,6 +11,8 @@ namespace Inno.Rendering2D;
 [ProjectSettingPath("Project/Rendering/2D/Renderer")]
 public sealed class Rendering2DProjectSettingsEditor : ProjectSettingEditor<Rendering2DProjectSettings>
 {
+    private string? m_pipelinePath;
+    private string m_pipelineError = string.Empty;
     /// <inheritdoc />
     public override ProjectSettingId settingId => Rendering2DProjectSettings.id;
 
@@ -17,11 +21,34 @@ public sealed class Rendering2DProjectSettingsEditor : ProjectSettingEditor<Rend
 
     /// <inheritdoc />
     public override string description
-        => "Configure project-wide pixel density and bounded 2D batching.";
+        => "Configure project-wide 2D rendering pipeline and batching limits.";
 
     /// <inheritdoc />
     protected override void OnDraw(Rendering2DProjectSettings setting)
     {
+        m_pipelinePath ??= setting.pipeline?.assetPath.ToString() ?? string.Empty;
+        ImGui.Text("Pipeline: " + (setting.pipeline?.name ?? "Not configured"));
+        ImGui.InputText("Choose Pipeline Source", ref m_pipelinePath, 512);
+        if (ImGui.Button("Assign Pipeline"))
+        {
+            try
+            {
+                RenderPipelineAsset candidate = Assets.Load<RenderPipelineAsset>(AssetPath.Parse(m_pipelinePath));
+                if (candidate.pipelineTypeId != Rendering2DIds.pipeline) throw new InvalidOperationException("Choose a 2D Pipeline.");
+                setting.pipeline = candidate;
+                m_pipelineError = string.Empty;
+            }
+            catch (Exception error) { m_pipelineError = error.Message; }
+        }
+        if (ImGui.Button("Use Plugin Default Pipeline"))
+        {
+            setting.pipeline = Assets.Load<RenderPipelineAsset>(Assets.LocalPath("Pipelines/Default2D.irenderpipeline"));
+            m_pipelinePath = setting.pipeline.assetPath.ToString();
+            m_pipelineError = string.Empty;
+        }
+        if (m_pipelineError.Length != 0) ImGui.Text(m_pipelineError);
+
+        ImGui.Separator();
         float pixelsPerUnit = setting.defaultPixelsPerUnit;
         if (ImGui.InputFloat("Default Pixels Per Unit", ref pixelsPerUnit))
             setting.defaultPixelsPerUnit = MathF.Max(0.001f, pixelsPerUnit);
@@ -35,6 +62,8 @@ public sealed class Rendering2DProjectSettingsEditor : ProjectSettingEditor<Rend
         if (ImGui.InputInt("Maximum Tiled Sprite Quads", ref tiledLimit))
             setting.maximumTiledSpriteQuads = Math.Max(1, tiledLimit);
     }
+
+
 }
 
 /// <summary>Provides the sorting-layer section of the unified 2D Project Settings page.</summary>

@@ -1,0 +1,27 @@
+// Light kind: global=0, point=1, spot=2, freeform=3. No hidden operation codes.
+void Evaluate(vec2 uv, vec2 worldPosition, vec4 originDirection, vec4 kindRangeFalloff,
+    vec4 radianceCone, sampler2D s_cookie, vec4 u_lightParameters, out vec4 color0, out vec4 color1)
+{
+    float kind = kindRangeFalloff.y;
+    float attenuation = 1.0;
+    vec2 toFragment = worldPosition - originDirection.xy;
+    float distanceToLight = length(toFragment);
+    if (kind > 0.5)
+    {
+        attenuation = pow(max(1.0 - distanceToLight / max(kindRangeFalloff.z, 0.0001), 0.0), max(kindRangeFalloff.w, 0.01));
+        if (kind > 1.5 && kind < 2.5 && distanceToLight > 0.0001)
+        {
+            float cone = dot(toFragment / distanceToLight, originDirection.zw);
+            attenuation *= clamp((cone - radianceCone.a) / max(1.0 - radianceCone.a, 0.0001), 0.0, 1.0);
+        }
+    }
+    vec2 cookieUv = kind > 2.5 ? toFragment / max(kindRangeFalloff.z * 2.0, 0.0001) + 0.5 : uv;
+    vec4 cookie = texture2D(s_cookie, cookieUv);
+    float weightedAttenuation = attenuation * cookie.a;
+    vec3 lightColor = radianceCone.rgb * cookie.rgb * weightedAttenuation;
+    float lightWeight = dot(lightColor, vec3(0.2126, 0.7152, 0.0722));
+    vec2 lightDirection = kind < 0.5 ? -originDirection.zw
+        : (distanceToLight > 0.0001 ? -toFragment / distanceToLight : vec2(0.0, 1.0));
+    color0 = vec4(lightColor, weightedAttenuation);
+    color1 = vec4(lightDirection * lightWeight, lightWeight, lightWeight * u_lightParameters.x);
+}

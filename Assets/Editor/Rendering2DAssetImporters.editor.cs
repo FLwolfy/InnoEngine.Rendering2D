@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using InnoEngine.Assets;
@@ -23,6 +24,7 @@ internal abstract class NativeRendering2DAssetImporter<TAsset> : AssetImporter<T
         foreach (AssetDependency dependency in dependencies)
             output.DependsOnAsset(dependency);
         await output.WriteArtifactAsync("runtime", context.sourceBytes, cancellationToken);
+        await WriteAdditionalArtifactsAsync(context, output, asset, cancellationToken);
     }
 
     protected sealed override ValueTask<ReadOnlyMemory<byte>?> ExportAsync(
@@ -35,6 +37,19 @@ internal abstract class NativeRendering2DAssetImporter<TAsset> : AssetImporter<T
             asset,
             context.services));
     }
+
+    /// <summary>Writes asset-specific immutable outputs after the structured runtime payload.</summary>
+    /// <param name="context">Current isolated import context.</param>
+    /// <param name="output">Candidate output writer.</param>
+    /// <param name="asset">Imported managed asset.</param>
+    /// <param name="cancellationToken">Cancellation observed before committing additional outputs.</param>
+    /// <returns>An operation that completes after every additional output has been staged.</returns>
+    protected virtual ValueTask WriteAdditionalArtifactsAsync(
+        AssetImportContext context,
+        AssetImportWriter<TAsset> output,
+        TAsset asset,
+        CancellationToken cancellationToken)
+        => ValueTask.CompletedTask;
 }
 
 [AssetImporterExtension]
@@ -45,6 +60,42 @@ internal sealed class SpriteAtlas2DImporter : NativeRendering2DAssetImporter<Spr
 
     /// <inheritdoc />
     public override IReadOnlyList<string> supportedExtensions { get; } = [".ispriteatlas2d"];
+
+    /// <inheritdoc />
+    protected override async ValueTask WriteAdditionalArtifactsAsync(
+        AssetImportContext context,
+        AssetImportWriter<SpriteAtlas2DAsset> output,
+        SpriteAtlas2DAsset asset,
+        CancellationToken cancellationToken)
+    {
+        SpriteAtlasCompositionResult2D composition = SpriteAtlasComposer2D.Compose(
+            asset,
+            texture => context.ReadSourceBytes(texture.assetPath));
+        asset.SetPages(composition.pages.Select(static page => page.page));
+        asset.SetRegions(composition.regions);
+        foreach (SpriteAtlasComposedPage2D page in composition.pages)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await output.WriteArtifactAsync(
+                page.page.colorSourceOutputName,
+                page.colorPngBytes,
+                cancellationToken);
+            if (page.normalPngBytes is not null)
+            {
+                await output.WriteArtifactAsync(
+                    page.page.normalSourceOutputName,
+                    page.normalPngBytes,
+                    cancellationToken);
+            }
+            if (page.emissionPngBytes is not null)
+            {
+                await output.WriteArtifactAsync(
+                    page.page.emissionSourceOutputName,
+                    page.emissionPngBytes,
+                    cancellationToken);
+            }
+        }
+    }
 }
 
 [AssetImporterExtension]
@@ -75,4 +126,24 @@ internal sealed class Tilemap2DImporter : NativeRendering2DAssetImporter<Tilemap
 
     /// <inheritdoc />
     public override IReadOnlyList<string> supportedExtensions { get; } = [".itilemap2d"];
+}
+
+[AssetImporterExtension]
+internal sealed class PostProcessProfile2DImporter : NativeRendering2DAssetImporter<PostProcessProfile2DAsset>
+{
+    /// <inheritdoc />
+    public override string importerId => "inno.rendering.2d.post-process";
+
+    /// <inheritdoc />
+    public override IReadOnlyList<string> supportedExtensions { get; } = [".ipostprocess2d"];
+}
+
+[AssetImporterExtension]
+internal sealed class ParticleEffect2DImporter : NativeRendering2DAssetImporter<ParticleEffect2DAsset>
+{
+    /// <inheritdoc />
+    public override string importerId => "inno.rendering.2d.particle-effect";
+
+    /// <inheritdoc />
+    public override IReadOnlyList<string> supportedExtensions { get; } = [".iparticle2d"];
 }

@@ -1,0 +1,26 @@
+// Instance-space sprite geometry. The graph supplies view state and stage interfaces.
+void Evaluate(vec2 a_position, vec4 i_data0, vec4 i_data1, vec4 i_data2, vec4 i_data3, vec4 i_data4, mat4 viewProjection,
+    out vec4 position, out vec2 v_texcoord0, out vec4 v_color0, out float v_shape,
+    out vec2 v_effectStep, out vec2 v_worldPosition, out vec4 v_effectData0)
+{
+    bool independentCorners = i_data3.y < -30000.0;
+    vec2 worldPosition = independentCorners
+        ? mix(mix(i_data0.xy, i_data0.zw, a_position.x),
+              mix(i_data1.xy, i_data1.zw, a_position.x), a_position.y)
+        : i_data0.xy
+            + a_position.x * (i_data0.zw - i_data0.xy)
+            + a_position.y * (i_data1.xy - i_data0.xy);
+    vec2 uv = independentCorners
+        ? a_position
+        : i_data1.zw
+            + a_position.x * (i_data2.xy - i_data1.zw)
+            + a_position.y * (i_data2.zw - i_data1.zw);
+    position = mul(viewProjection, vec4(worldPosition, i_data3.x, 1.0));
+    v_texcoord0 = uv;
+    v_color0 = i_data4;
+    v_shape = i_data3.y;
+    v_effectStep = i_data3.zw;
+    v_worldPosition = worldPosition;
+    v_effectData0 = i_data2;
+}
+

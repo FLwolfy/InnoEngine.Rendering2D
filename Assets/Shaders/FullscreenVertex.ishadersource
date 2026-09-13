@@ -1,0 +1,6 @@
+// Fullscreen geometry is independent of Sprite instance data.
+void Evaluate(vec2 a_position, vec4 u_blitGeometry, out vec4 position, out vec2 uv)
+{
+    position = vec4(a_position * 2.0 - 1.0, 0.0, 1.0);
+    uv = vec2(a_position.x, u_blitGeometry.x > 0.5 ? a_position.y : 1.0 - a_position.y);
+}

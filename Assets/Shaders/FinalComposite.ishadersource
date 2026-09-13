@@ -1,0 +1,22 @@
+// Color adjustments: exposure, contrast, saturation, vignette.
+// Composite options: tone mapping, bloom enabled, pixel size. All values are Pass-owned.
+vec4 Evaluate(vec2 uv, sampler2D s_source, sampler2D s_auxiliary, vec4 u_texelSize,
+    vec4 u_colorAdjustments, vec4 u_composite)
+{
+    if (u_composite.z > 1.5)
+        uv = (floor(uv / u_texelSize.xy) + 0.5) * u_texelSize.xy;
+    vec4 source = texture2D(s_source, uv);
+    vec3 color = source.rgb;
+    if (u_composite.y > 0.5)
+        color += texture2D(s_auxiliary, uv).rgb;
+    color *= exp2(u_colorAdjustments.x);
+    color = (color - 0.5) * max(u_colorAdjustments.y, 0.0) + 0.5;
+    float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
+    color = mix(vec3(luminance), color, max(u_colorAdjustments.z, 0.0));
+    if (u_composite.x > 0.5)
+        color = clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14), 0.0, 1.0);
+    vec2 vignettePosition = (uv - 0.5) * 2.0;
+    float vignetteWeight = 1.0 - clamp(dot(vignettePosition, vignettePosition) * 0.5, 0.0, 1.0);
+    color *= mix(1.0, vignetteWeight, clamp(u_colorAdjustments.w, 0.0, 1.0));
+    return vec4(color, source.a);
+}

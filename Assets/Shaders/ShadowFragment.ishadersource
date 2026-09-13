@@ -1,0 +1,5 @@
+// The Pipeline supplies stencil operations and disables color writes.
+vec4 Evaluate()
+{
+    return vec4(0.0);
+}

@@ -11,16 +11,28 @@ A source-based 2D rendering plugin for [InnoEngine](https://github.com/FLwolfy/I
 
 - Orthographic and pixel-perfect cameras, layer culling, and deterministic Base/Overlay camera stacks
 - Textured, atlas-backed, nine-sliced, tiled, and procedural sprites
-- Sprite atlases and timed animation clips with stable region and event IDs
-- Sparse layered tilemaps with per-cell transforms, tint, and gameplay metadata
-- Global, point, and spot 2D lights with opt-in lighting and layer masks
-- Stable sorting layers, batching, frustum culling, and bounded frame generation
+- Deterministically composed PNG/TGA sprite atlases and timed animation clips with stable region/event IDs
+- Sparse layered tilemaps with dirty chunk revisions, persistent static instance buffers, compact Undo, and tools
+- GPU-rasterized global, point, spot, and freeform 2D lights with cookies, four blend styles, layer masks,
+  normal/emission maps, and D24S8 hard/soft shadow volumes
+- Sorting groups and D24S8 stencil-backed sprite masks with inside/outside interactions
+- HDR intermediate rendering with exposure, contrast, saturation, tone mapping, configurable multi-level Bloom,
+  vignette, and pixelation
+- Deterministic CPU particles with fixed-seed simulation and instanced rendering
+- Stable sorting layers, shared-quad instancing, frustum culling, and bounded frame generation
 - Straight alpha, premultiplied alpha, additive, multiply, and opaque material roles
 - CPU picking against the same immutable frame used by the Scene viewport
 - Scene and Game viewport integration, including pan, cursor-anchored zoom, framing, grid, and axes
-- Plugin-owned project settings and asset importers for the complete authoring workflow
+- Unified Asset Browser documents for atlases, animations, tile sets, tilemaps, post-processing, and particles
+- Deterministic MaxRects atlas composition with trim, rotation, extrusion, and named multi-page texture artifacts
+- Plugin-owned project settings and native asset importers
+- Opt-in zero-allocation/P95 scale gates for 100,000 visible tiles, a million-cell sparse domain, and 32 lights
+- Native Metal, D3D11, D3D12, and Vulkan acceptance scripts plus a self-hosted GPU CI matrix
 
-Physics, navigation, audio, gameplay UI, bitmap fonts, particle authoring, and texture packing are intentionally outside this plugin's scope.
+Physics, navigation, audio, gameplay UI, skeletal animation, SpriteShape, and Aseprite/PSD importing remain
+separate product lines. Text is deliberately split into future `Inno.Text` and `Inno.Text.Rendering2D` plugins;
+this repository does not embed FreeType, HarfBuzz, MSDF caches, font assets, or shaping policy. See the
+[implementation status](Assets/Documentation/IMPLEMENTATION_STATUS.md) for the exact completed and pending milestones.
 
 ## Requirements
 
@@ -41,10 +53,38 @@ GameEngineDev/
 From this repository, launch the Inno Editor with the repository root as the project directory:
 
 ```bash
-dotnet run --project ../InnoEngine/src/editor/Inno.Editor.Application -- .
+dotnet run --project ../InnoEngine/src/composition/editor/host/Inno.Editor.Application -- .
 ```
 
-The editor imports the authored content under `Assets/` and regenerates `Library/`, IDE project files, logs, and other local state. Open `Assets/~Samples/SampleRender2D.iscene` for a working example.
+The editor imports the authored content under `Assets/` and regenerates `Library/`, IDE project files, logs, and other local state. Open `Assets/~Samples/SampleScene.iscene` for a working example in Edit or Play Mode. The same launch command accepts a project path with a trailing directory separator.
+
+The pipeline publishes diagnostics through `InnoEngine.Diagnostics.Diagnostic` and `DiagnosticSeverity`, using the reporter supplied by `RenderPipelineContext`. Scene input comes from the current identity-backed content scope; the plugin does not require an engine-owned 2D scene bridge or a native backend API.
+
+## GPU and performance acceptance
+
+On macOS arm64, run the complete Metal shader, GPU graph, scale, and allocation gate with:
+
+```bash
+DOTNET_COMMAND=/Users/aaronliao/.dotnet/dotnet \
+  ./Tools/Validate-Rendering2D.sh ../InnoEngine 600
+```
+
+On a Windows x64 machine with a physical GPU and the requested driver installed, run one backend at a time:
+
+```powershell
+./Tools/Validate-Rendering2D.ps1 `
+  -EngineRoot ../InnoEngine `
+  -Backend d3d12 `
+  -SmokeFrames 600 `
+  -PrepareEngine
+```
+
+Valid Windows backend values are `d3d11`, `d3d12`, and `vulkan`. The script compiles both shared shader stages
+for the exact backend profile, rebuilds a deterministic 32-light/soft-shadow/five-level-Bloom scene, runs the
+native Editor, enforces zero allocations and P95 <= 5 ms over stable extraction and request submission, rejects
+known software renderers and post-warmup render-target creation, and treats any missing acceptance marker as
+failure. The checked-in GPU workflow intentionally uses
+self-hosted runners carrying the `gpu` label; a generic hosted VM is not accepted as hardware evidence.
 
 ## Use the plugin in a scene
 
@@ -78,6 +118,12 @@ To produce an installable package, open this repository in the Inno Editor and c
 Builds/rendering2d.iplugin
 ```
 
+`Settings.Project.inno` explicitly owns the stable Project/Plugin ID `rendering2d`; it is not inferred again from the checkout directory name. The equivalent headless export uses the same engine build pipeline:
+
+```bash
+dotnet run --project ../InnoEngine/build/pipeline/Inno.Build.Cli -- plugin --project . --output Builds/rendering2d.iplugin --display-name InnoEngine.Rendering2D
+```
+
 Install it in another Inno project by copying the complete package to that project's `Plugins/` directory:
 
 ```text
@@ -87,7 +133,7 @@ MyGame/
     └── rendering2d.iplugin
 ```
 
-Installed plugin mounts are read-only. To modify the plugin, edit this authoring project and export a new package. Content under a `~`-prefixed directory is distributed as an optional sample and does not enter a Player build until imported into the consuming project's `Assets/` directory.
+Installed plugin mounts are read-only. To modify the plugin, edit this authoring project and export a new package. Content under a `~`-prefixed directory is distributed as an optional sample. Importing a sample preserves its `~` directory name and makes it available in the consuming project's Editor/Play Mode, but no `~` subtree enters a Player build. For a Player, author a scene outside `~` directories and select it in Build Settings. This plugin authoring project therefore leaves its Player startup scene unassigned.
 
 ## Project layout
 

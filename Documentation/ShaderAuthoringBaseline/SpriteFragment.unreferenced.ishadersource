@@ -1,0 +1,76 @@
+// Sprite surface coverage and lighting only. Internal light generation and post-processing use independent programs.
+void Evaluate(vec2 v_texcoord0, vec4 v_color0, float v_shape, vec2 v_effectStep,
+    sampler2D s_spriteTexture, sampler2D s_normalTexture, sampler2D s_emissionTexture, sampler2D s_lightColor0, sampler2D s_lightColor1, sampler2D s_lightColor2, sampler2D s_lightColor3, sampler2D s_lightDirection0, sampler2D s_lightDirection1, sampler2D s_lightDirection2, sampler2D s_lightDirection3,
+    vec4 u_lightSampling, vec4 u_spriteMaterial, vec4 fragmentCoordinate, vec4 viewRectangle, vec4 viewTexel,
+    out vec4 color0)
+{
+    vec2 shapePosition = v_texcoord0 * 2.0 - 1.0;
+    float shapeAlpha = 1.0;
+    if (v_shape > 1.5 && v_shape < 2.5)
+    {
+        float distanceToEdge = 1.0 - length(shapePosition);
+        shapeAlpha = smoothstep(-fwidth(distanceToEdge), fwidth(distanceToEdge), distanceToEdge);
+    }
+    else if (v_shape > 2.5 && v_shape < 3.5)
+    {
+        vec2 trianglePoint = vec2(shapePosition.x, -shapePosition.y);
+        float edge = max(
+            trianglePoint.y - 1.0,
+            max(-trianglePoint.y - 2.0 * trianglePoint.x - 1.0,
+                -trianglePoint.y + 2.0 * trianglePoint.x - 1.0));
+        shapeAlpha = 1.0 - smoothstep(-fwidth(edge), fwidth(edge), edge);
+    }
+    else if (v_shape > 3.5 && v_shape < 4.5)
+    {
+        vec2 capsulePoint = vec2(shapePosition.x, max(abs(shapePosition.y) - 0.5, 0.0));
+        float distanceToEdge = 0.5 - length(capsulePoint);
+        shapeAlpha = smoothstep(-fwidth(distanceToEdge), fwidth(distanceToEdge), distanceToEdge);
+    }
+
+    vec4 source = v_shape < 0.5 ? texture2D(s_spriteTexture, v_texcoord0) : vec4(1.0);
+    vec4 color = source * v_color0;
+    float lightMask = floor(u_spriteMaterial.a + 0.5);
+    if (lightMask > 0.5)
+    {
+        vec2 lightUv = (fragmentCoordinate.xy - viewRectangle.xy) * viewTexel.xy;
+        if (u_lightSampling.x > 0.5)
+            lightUv.y = 1.0 - lightUv.y;
+        vec3 lightColor = vec3(0.0);
+        vec4 lightDirection = vec4(0.0);
+        if (mod(floor(lightMask), 2.0) > 0.5)
+        {
+            lightColor += texture2D(s_lightColor0, lightUv).rgb;
+            lightDirection += texture2D(s_lightDirection0, lightUv);
+        }
+        if (mod(floor(lightMask / 2.0), 2.0) > 0.5)
+        {
+            lightColor += texture2D(s_lightColor1, lightUv).rgb;
+            lightDirection += texture2D(s_lightDirection1, lightUv);
+        }
+        if (mod(floor(lightMask / 4.0), 2.0) > 0.5)
+        {
+            lightColor += texture2D(s_lightColor2, lightUv).rgb;
+            lightDirection += texture2D(s_lightDirection2, lightUv);
+        }
+        if (mod(floor(lightMask / 8.0), 2.0) > 0.5)
+        {
+            lightColor += texture2D(s_lightColor3, lightUv).rgb;
+            lightDirection += texture2D(s_lightDirection3, lightUv);
+        }
+        vec3 normal = normalize(texture2D(s_normalTexture, v_texcoord0).xyz * 2.0 - 1.0);
+        vec2 planarDirection = lightDirection.b > 0.0001
+            ? lightDirection.rg / lightDirection.b
+            : vec2(0.0, 1.0);
+        vec3 direction = normalize(vec3(planarDirection * 0.5, 1.0));
+        float normalAmount = lightDirection.b > 0.0001
+            ? clamp(lightDirection.a / lightDirection.b, 0.0, 1.0)
+            : 0.0;
+        float normalLighting = 0.5 + 0.5 * max(dot(normal, direction), 0.0);
+        color.rgb *= lightColor * mix(1.0, normalLighting, normalAmount);
+    }
+    color.rgb += texture2D(s_emissionTexture, v_texcoord0).rgb * u_spriteMaterial.rgb;
+    color.a *= shapeAlpha;
+    if (color.a <= max(0.001, v_effectStep.x))
+        discard;
+    color0 = color;
+}

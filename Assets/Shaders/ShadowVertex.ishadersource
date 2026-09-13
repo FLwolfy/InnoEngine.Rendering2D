@@ -1,0 +1,6 @@
+// Shadow volumes and stencil clears use independent corners, without Sprite semantics.
+vec4 Evaluate(vec2 a_position, vec4 i_data0, vec4 i_data1, mat4 viewProjection)
+{
+    vec2 worldPosition = mix(mix(i_data0.xy, i_data0.zw, a_position.x), mix(i_data1.xy, i_data1.zw, a_position.x), a_position.y);
+    return mul(viewProjection, vec4(worldPosition, 0.0, 1.0));
+}

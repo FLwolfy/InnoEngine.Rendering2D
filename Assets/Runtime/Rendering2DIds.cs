@@ -16,6 +16,15 @@ public static class Rendering2DIds
     /// <summary>Gets the material contract implemented by sprite-compatible shaders.</summary>
     public static ShaderContractId spriteContract => new("inno.rendering.2d.sprite");
 
+    /// <summary>Gets the Pipeline-owned fullscreen processing contract.</summary>
+    public static ShaderContractId postProcessContract => new("inno.rendering.2d.post-process");
+
+    /// <summary>Gets the Pipeline-owned MRT light accumulation contract.</summary>
+    public static ShaderContractId lightContract => new("inno.rendering.2d.light");
+
+    /// <summary>Gets the independent shadow-volume and stencil utility contract.</summary>
+    public static ShaderContractId shadowContract => new("inno.rendering.2d.shadow");
+
     /// <summary>Gets the straight-alpha pass role.</summary>
     public static ShaderPassRoleId alphaRole => new("inno.rendering.2d.alpha");
 
