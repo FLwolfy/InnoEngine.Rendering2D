@@ -116,6 +116,7 @@ public static class Rendering2DInternalShaders
             Set(call, "stage", stage.ToString());
             Set(call, "sourceId", function.identity.persistentId);
             Set(call, "sourcePath", function.assetPath.ToString());
+            Set(call, "function", function.exports.Single());
             return call;
         }
 
@@ -137,9 +138,27 @@ public static class Rendering2DInternalShaders
                 renderState: new() { cull = ShaderCullMode.None, depthCompare = ShaderCompareFunction.Always, depthWrite = false, blend = pass.blend, colorWriteMask = 15 })),
                 techniques: [new(new("default"), contract, passes.Select(pass => new ShaderTechniquePass(pass.role, pass.name)))]);
             m_graph.SetMetadata(ShaderGraphDocument.definitionKey, ShaderGraphDocument.Encode(serialization.Serialize(definition, references), serialization, references));
+            Layout();
             GraphDocument result = m_graph;
             foreach (var pass in passes) result = ShaderGraphPrograms.Bind(result, pass.name, m_stages, serialization, references);
             return result;
+        }
+
+        private void Layout()
+        {
+            float lane = 60f;
+            foreach (GraphNodeRecord output in m_graph.nodes.Where(node => node.definitionId == ShaderGraphDocument.outputDefinitionId)
+                         .OrderBy(node => ShaderGraphDocument.Read(node, "settings", new ShaderGraphStageSettings(), serialization, references).stage))
+            {
+                GraphNodeRecord[] nodes = m_graph.nodes.Where(node => node.id == output.id
+                    || ShaderGraphDocument.Read(node, "stage", "", serialization, references) == output.id.value).ToArray();
+                GraphNodeRecord[] inputs = nodes.Where(node => node.definitionId == "inno.shader.stage-input").ToArray();
+                GraphNodeRecord[] functions = nodes.Where(node => node.definitionId == "inno.shader.source").ToArray();
+                for (int i = 0; i < inputs.Length; i++) inputs[i].position = new(40f, lane + i * 180f);
+                for (int i = 0; i < functions.Length; i++) functions[i].position = new(430f, lane + i * 220f);
+                output.position = new(800f, lane);
+                lane += Math.Max(1, Math.Max(inputs.Length, functions.Length)) * 220f + 120f;
+            }
         }
 
         internal GraphNodeRecord Node(string id, string type)

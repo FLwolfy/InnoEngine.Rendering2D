@@ -5,7 +5,7 @@ using InnoEditor.Shaders;
 namespace Inno.Rendering2D;
 
 /// <summary>Explains the surface contract and exposes replaceable source modules using shared asset controls.</summary>
-[ShaderNodeDrawer(SpriteShaderTarget.surfaceNode, "Sprite Surface Output")]
+[ShaderNodeDrawer(SpriteShaderTarget.surfaceNode, "Sprite Surface Output", "Domain Outputs/Rendering 2D", 800, separatorBefore: true)]
 public sealed class SpriteSurfaceInspector : ShaderNodeDrawer
 {
     /// <inheritdoc />
@@ -25,7 +25,7 @@ public sealed class SpriteSurfaceInspector : ShaderNodeDrawer
 }
 
 /// <summary>Explains which per-instance textures the convenience node samples.</summary>
-[ShaderNodeDrawer(SpriteShaderTarget.textureNode, "Sprite Texture")]
+[ShaderNodeDrawer(SpriteShaderTarget.textureNode, "Sprite Texture", "Domain/Rendering 2D", 850, separatorBefore: true)]
 public sealed class SpriteTextureInspector : ShaderNodeDrawer
 {
     /// <inheritdoc />

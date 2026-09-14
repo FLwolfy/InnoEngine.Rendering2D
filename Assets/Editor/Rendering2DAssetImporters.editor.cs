@@ -52,7 +52,6 @@ internal abstract class NativeRendering2DAssetImporter<TAsset> : AssetImporter<T
         => ValueTask.CompletedTask;
 }
 
-[AssetImporterExtension]
 internal sealed class SpriteAtlas2DImporter : NativeRendering2DAssetImporter<SpriteAtlas2DAsset>
 {
     /// <inheritdoc />
@@ -98,7 +97,6 @@ internal sealed class SpriteAtlas2DImporter : NativeRendering2DAssetImporter<Spr
     }
 }
 
-[AssetImporterExtension]
 internal sealed class SpriteAnimation2DImporter : NativeRendering2DAssetImporter<SpriteAnimation2DAsset>
 {
     /// <inheritdoc />
@@ -108,7 +106,6 @@ internal sealed class SpriteAnimation2DImporter : NativeRendering2DAssetImporter
     public override IReadOnlyList<string> supportedExtensions { get; } = [".ispriteanimation2d"];
 }
 
-[AssetImporterExtension]
 internal sealed class TileSet2DImporter : NativeRendering2DAssetImporter<TileSet2DAsset>
 {
     /// <inheritdoc />
@@ -118,7 +115,6 @@ internal sealed class TileSet2DImporter : NativeRendering2DAssetImporter<TileSet
     public override IReadOnlyList<string> supportedExtensions { get; } = [".itileset2d"];
 }
 
-[AssetImporterExtension]
 internal sealed class Tilemap2DImporter : NativeRendering2DAssetImporter<Tilemap2DAsset>
 {
     /// <inheritdoc />
@@ -128,7 +124,6 @@ internal sealed class Tilemap2DImporter : NativeRendering2DAssetImporter<Tilemap
     public override IReadOnlyList<string> supportedExtensions { get; } = [".itilemap2d"];
 }
 
-[AssetImporterExtension]
 internal sealed class PostProcessProfile2DImporter : NativeRendering2DAssetImporter<PostProcessProfile2DAsset>
 {
     /// <inheritdoc />
@@ -138,7 +133,6 @@ internal sealed class PostProcessProfile2DImporter : NativeRendering2DAssetImpor
     public override IReadOnlyList<string> supportedExtensions { get; } = [".ipostprocess2d"];
 }
 
-[AssetImporterExtension]
 internal sealed class ParticleEffect2DImporter : NativeRendering2DAssetImporter<ParticleEffect2DAsset>
 {
     /// <inheritdoc />

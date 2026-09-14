@@ -14,7 +14,6 @@ using static Inno.Rendering2D.Rendering2DInternalShaders;
 namespace Inno.Rendering2D;
 
 /// <summary>Expands authored Sprite surfaces into the shared typed compilation chain entirely inside the Plugin.</summary>
-[ShaderTarget]
 public sealed class SpriteShaderTarget : ShaderTarget
 {
     /// <summary>Identifies the Plugin-owned Sprite surface authoring target.</summary>
@@ -169,7 +168,6 @@ public sealed class SpriteShaderTarget : ShaderTarget
 }
 
 /// <summary>Describes the high-level surface interface independently of its Target expansion.</summary>
-[ShaderNodeCompilerExtension]
 public sealed class SpriteSurfaceNodeCompiler : IShaderNodeCompiler
 {
     /// <inheritdoc />
@@ -186,7 +184,6 @@ public sealed class SpriteSurfaceNodeCompiler : IShaderNodeCompiler
 }
 
 /// <summary>Describes the convenience sample node; its implementation is supplied by the Sprite Target.</summary>
-[ShaderNodeCompilerExtension]
 public sealed class SpriteTextureNodeCompiler : IShaderNodeCompiler
 {
     /// <inheritdoc />
@@ -202,7 +199,6 @@ public sealed class SpriteTextureNodeCompiler : IShaderNodeCompiler
 }
 
 /// <summary>Contributes a four-node Sprite template to the unified File Browser create menu.</summary>
-[ShaderGraphTemplate]
 public sealed class SpriteShaderTemplate : ShaderGraphTemplate
 {
     /// <inheritdoc />

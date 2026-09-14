@@ -25,8 +25,9 @@ Pipeline's default Sprite Material; a missing required coverage resource makes t
 never silently unmasked. An independently authored `ShadowCaster2D` remains an explicit shadow polygon, not an
 automatically inferred silhouette of arbitrary Shader code.
 
-Material Preview and Shader Output Preview are isolated Editor-only GPU swatches. Their drafts do not modify
-Scene/Game or source assets. Use Save to publish through import and compilation, or Revert to discard draft edits.
+Material Preview and the Shader Inspector's always-visible Preview are isolated Editor-only GPU swatches. Their
+drafts do not modify Scene/Game or source assets. Use Save to publish through import and compilation, or Revert to
+discard draft edits.
 
 ### Drawing and effects
 
