@@ -6,6 +6,7 @@ using System.Linq;
 using InnoEditor.Assets;
 using InnoEditor.Core;
 using InnoEditor.ImGui;
+using InnoEditor.Inspection;
 using InnoEditor.Interactions;
 using InnoEditor.Rendering;
 using InnoEngine.Assets;
@@ -14,20 +15,88 @@ using InnoEngine.Rendering;
 
 namespace Inno.Rendering2D;
 
-/// <summary>Registers the reload-safe unified document provider for native 2D assets.</summary>
+/// <summary>Registers the reload-safe headless document provider for native 2D assets.</summary>
 [EditorModule("rendering2d.asset-documents", order: 400)]
 public sealed class Rendering2DAssetDocumentModule(
     EditorInteractions interactions,
     IEditorPreviewService previews) : EditorModule
 {
     private IDisposable? m_registration;
+    private Rendering2DAssetDocumentProvider? m_provider;
+
+    internal void DrawInspectorHeader(InspectionDrawContext context, AssetObject asset)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(asset);
+        Rendering2DAssetDocumentProvider provider = m_provider
+            ?? throw new InvalidOperationException("The 2D asset document provider is unavailable.");
+        EditorDocumentContext document = interactions.documents.Open(
+            asset.assetPath.ToString(),
+            asset.identity.persistentId);
+        provider.DrawInspectorHeader(document);
+    }
+
+    internal void DrawInspectorHeader(InspectionDrawContext context, AssetFileEntry source)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(source);
+        Rendering2DAssetDocumentProvider provider = m_provider
+            ?? throw new InvalidOperationException("The 2D asset document provider is unavailable.");
+        EditorDocumentContext document = interactions.documents.Open(source.assetPath.ToString(), Guid.Empty);
+        provider.DrawInspectorHeader(document);
+    }
+
+    internal void DrawInspector(InspectionDrawContext context, AssetObject asset)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(asset);
+        Rendering2DAssetDocumentProvider provider = m_provider
+            ?? throw new InvalidOperationException("The 2D asset document provider is unavailable.");
+        EditorDocumentContext document = interactions.documents.Open(
+            asset.assetPath.ToString(),
+            asset.identity.persistentId);
+        provider.DrawInspector(document, context);
+    }
+
+    internal void DrawInspector(InspectionDrawContext context, AssetFileEntry source)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(source);
+        Rendering2DAssetDocumentProvider provider = m_provider
+            ?? throw new InvalidOperationException("The 2D asset document provider is unavailable.");
+        EditorDocumentContext document = interactions.documents.Open(
+            source.assetPath.ToString(),
+            Guid.Empty);
+        provider.DrawInspector(document, context);
+    }
+
+    internal EditorHistoryAvailability QueryHistory(
+        EditorHistoryChange change,
+        EditorHistoryDirection direction)
+        => m_provider?.QueryHistory(change, direction)
+           ?? EditorHistoryAvailability.Unavailable("The 2D asset draft provider is reloading.");
+
+    internal EditorHistoryResult ApplyHistory(
+        EditorHistoryChange change,
+        EditorHistoryDirection direction)
+        => m_provider?.ApplyHistory(change, direction)
+           ?? EditorHistoryResult.Failure("The 2D asset draft provider is reloading.");
+
+    internal bool TryMergeHistory(
+        EditorHistoryChange older,
+        EditorHistoryChange newer,
+        out EditorHistoryChange? merged)
+        => Rendering2DAssetDocumentProvider.TryMergeHistory(older, newer, out merged);
 
     /// <inheritdoc />
     protected override void OnStart(EditorContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        m_registration = interactions.documents.RegisterProvider(
-            new Rendering2DAssetDocumentProvider(interactions.documents, previews, interactions.history));
+        m_provider = new Rendering2DAssetDocumentProvider(
+            interactions.documents,
+            previews,
+            interactions.history);
+        m_registration = interactions.documents.RegisterProvider(m_provider);
     }
 
     /// <inheritdoc />
@@ -36,6 +105,7 @@ public sealed class Rendering2DAssetDocumentModule(
         ArgumentNullException.ThrowIfNull(context);
         m_registration?.Dispose();
         m_registration = null;
+        m_provider = null;
     }
 
     /// <inheritdoc />
@@ -43,29 +113,89 @@ public sealed class Rendering2DAssetDocumentModule(
     {
         m_registration?.Dispose();
         m_registration = null;
+        m_provider = null;
     }
 }
 
-/// <summary>Opens supported 2D assets in the unified document host from the Asset Browser.</summary>
-[AssetEditor(typeof(SpriteAtlas2DAsset))]
-[AssetEditor(typeof(SpriteAnimation2DAsset))]
-[AssetEditor(typeof(TileSet2DAsset))]
-[AssetEditor(typeof(Tilemap2DAsset))]
-[AssetEditor(typeof(PostProcessProfile2DAsset))]
-[AssetEditor(typeof(ParticleEffect2DAsset))]
-public sealed class Rendering2DDocumentAssetEditor : AssetEditor
+/// <summary>Draws native Rendering2D authoring drafts through the shared Inspector.</summary>
+[InspectionDrawer(typeof(SpriteAtlas2DAsset))]
+[InspectionDrawer(typeof(SpriteAnimation2DAsset))]
+[InspectionDrawer(typeof(TileSet2DAsset))]
+[InspectionDrawer(typeof(Tilemap2DAsset))]
+[InspectionDrawer(typeof(PostProcessProfile2DAsset))]
+[InspectionDrawer(typeof(ParticleEffect2DAsset))]
+public sealed class Rendering2DAssetInspectionDrawer : InspectionDrawer<AssetObject>
 {
     /// <inheritdoc />
-    public override bool CanOpen(AssetEditorContext context)
-        => context is not null && !context.isDirectory;
+    public override string icon => ImGuiIcon.File;
 
     /// <inheritdoc />
-    public override void Open(AssetEditorContext context)
+    protected override (string, Action<string>?) BindName(
+        InspectionDrawContext context,
+        AssetObject target)
+        => (target.name, null);
+
+    /// <inheritdoc />
+    protected override void DrawHeader(InspectionDrawContext context, AssetObject target)
     {
-        ArgumentNullException.ThrowIfNull(context);
-        _ = context.interactions.documents.Open(
-            context.relativePath,
-            context.info?.persistentId ?? Guid.Empty);
+        if (context.interactions.TryGetModule<Rendering2DAssetDocumentModule>(out var module)
+            && module is not null)
+        {
+            module.DrawInspectorHeader(context, target);
+        }
+    }
+
+    /// <inheritdoc />
+    protected override void Draw(InspectionDrawContext context, AssetObject target)
+    {
+        if (context.interactions.TryGetModule<Rendering2DAssetDocumentModule>(out var module)
+            && module is not null)
+        {
+            module.DrawInspector(context, target);
+        }
+    }
+}
+
+/// <summary>Draws selected Rendering2D source files through the same native asset drafts.</summary>
+[InspectionDrawer(typeof(AssetFileEntry), priority: 100, conditional: true)]
+public sealed class Rendering2DAssetSourceInspectionDrawer(
+    IInspectionIconProvider<AssetFileEntry> icons) : InspectionDrawer<AssetFileEntry>
+{
+    /// <inheritdoc />
+    public override string icon => ImGuiIcon.File;
+
+    /// <inheritdoc />
+    protected override bool CanInspect(AssetFileEntry target)
+        => !target.isDirectory && Rendering2DAssetDocumentProvider.Supports(target.extension);
+
+    /// <inheritdoc />
+    protected override string GetIcon(InspectionDrawContext context, AssetFileEntry target)
+        => icons.GetIcon(target);
+
+    /// <inheritdoc />
+    protected override (string, Action<string>?) BindName(
+        InspectionDrawContext context,
+        AssetFileEntry target)
+        => (target.nameWithoutExtension, null);
+
+    /// <inheritdoc />
+    protected override void DrawHeader(InspectionDrawContext context, AssetFileEntry target)
+    {
+        if (context.interactions.TryGetModule<Rendering2DAssetDocumentModule>(out var module)
+            && module is not null)
+        {
+            module.DrawInspectorHeader(context, target);
+        }
+    }
+
+    /// <inheritdoc />
+    protected override void Draw(InspectionDrawContext context, AssetFileEntry target)
+    {
+        if (context.interactions.TryGetModule<Rendering2DAssetDocumentModule>(out var module)
+            && module is not null)
+        {
+            module.DrawInspector(context, target);
+        }
     }
 }
 
@@ -85,37 +215,76 @@ internal sealed class Rendering2DAssetDocumentProvider(
     ];
 
     private readonly Dictionary<Guid, Draft> m_drafts = [];
+    private readonly Dictionary<Guid, byte[]> m_baselines = [];
 
-    public override string id => "inno.rendering2d.native-assets";
+    public override string id => Rendering2DIds.assetDocumentProvider;
 
     public override bool CanOpen(string assetPath)
-    {
-        string extension = Path.GetExtension(assetPath);
-        for (int index = 0; index < S_EXTENSIONS.Length; index++)
-        {
-            if (string.Equals(extension, S_EXTENSIONS[index], StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-        return false;
-    }
+        => Supports(Path.GetExtension(assetPath));
+
+    internal static bool Supports(string extension)
+        => Array.Exists(
+            S_EXTENSIONS,
+            value => string.Equals(value, extension, StringComparison.OrdinalIgnoreCase));
 
     public override void Open(EditorDocumentContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         context.title = Path.GetFileNameWithoutExtension(context.assetPath);
-        m_drafts[context.documentId] = CreateDraft(context);
+        Draft draft = CreateDraft(context);
+        byte[] baseline = draft.Capture();
+        if (context.isDirty
+            && context.TryGetViewParameter("draft", out string encodedDraft)
+            && context.TryGetViewParameter("baseline", out string encodedBaseline))
+        {
+            baseline = Convert.FromBase64String(encodedBaseline);
+            draft.Restore(Convert.FromBase64String(encodedDraft));
+        }
+        m_drafts[context.documentId] = draft;
+        m_baselines[context.documentId] = baseline;
+        SynchronizeState(context, draft);
     }
 
-    public override void Draw(EditorDocumentContext context)
+    internal void DrawInspector(
+        EditorDocumentContext context,
+        InspectionDrawContext inspection)
     {
         ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(inspection);
         if (!m_drafts.TryGetValue(context.documentId, out Draft? draft))
             draft = m_drafts[context.documentId] = CreateDraft(context);
 
-        ImGui.Text(context.assetPath);
-        ImGui.Separator();
-        if (draft.Draw(previews))
-            documents.SetDirty(context.documentId);
+        bool readOnly = AssetPath.Parse(context.assetPath).source != AssetSourceId.project;
+        ImGui.SeparatorText("Asset");
+        ImGui.Text(context.isDirty
+            ? "Unsaved changes · runtime content unchanged"
+            : "Saved source");
+        if (readOnly)
+            ImGui.Text("Installed Plugin asset · copy to the project to edit");
+
+        var edits = new InspectorDraftEdits(this, context, draft, readOnly);
+        draft.DrawInspector(inspection, previews, edits, readOnly);
+    }
+
+    internal void DrawInspectorHeader(EditorDocumentContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        if (!m_drafts.TryGetValue(context.documentId, out _))
+            m_drafts[context.documentId] = CreateDraft(context);
+        bool readOnly = AssetPath.Parse(context.assetPath).source != AssetSourceId.project;
+        ImGui.BeginDisabled(readOnly);
+        try
+        {
+            if (ImGui.Button("Save"))
+                _ = documents.Save(context.documentId);
+            ImGui.SameLine();
+            if (ImGui.Button("Revert"))
+                _ = documents.Revert(context.documentId);
+        }
+        finally
+        {
+            ImGui.EndDisabled();
+        }
     }
 
     public override bool Save(EditorDocumentContext context)
@@ -123,13 +292,21 @@ internal sealed class Rendering2DAssetDocumentProvider(
         ArgumentNullException.ThrowIfNull(context);
         if (!m_drafts.TryGetValue(context.documentId, out Draft? draft))
             return false;
-        return draft.Save(AssetPath.Parse(context.assetPath));
+        if (!draft.Save(AssetPath.Parse(context.assetPath))) return false;
+        m_baselines[context.documentId] = draft.Capture();
+        SynchronizeState(context, draft);
+        return true;
     }
 
     public override bool Revert(EditorDocumentContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        m_drafts[context.documentId] = CreateDraft(context);
+        Draft previous = m_drafts[context.documentId];
+        byte[] before = previous.Capture();
+        Draft replacement = CreateDraft(context);
+        m_drafts[context.documentId] = replacement;
+        m_baselines[context.documentId] = replacement.Capture();
+        RecordApplied(context, replacement, before, "Revert 2D Asset");
         return true;
     }
 
@@ -137,7 +314,156 @@ internal sealed class Rendering2DAssetDocumentProvider(
     {
         ArgumentNullException.ThrowIfNull(context);
         _ = m_drafts.Remove(context.documentId);
+        _ = m_baselines.Remove(context.documentId);
     }
+
+    internal EditorHistoryAvailability QueryHistory(
+        EditorHistoryChange change,
+        EditorHistoryDirection direction)
+    {
+        try
+        {
+            ChangeData data = DecodeChange(change);
+            if (!m_drafts.TryGetValue(data.documentId, out Draft? draft))
+                return EditorHistoryAvailability.Unavailable($"Reopen '{data.assetPath}' to use its History.");
+            byte[] expected = direction == EditorHistoryDirection.Undo ? data.after : data.before;
+            return draft.Capture().AsSpan().SequenceEqual(expected)
+                ? EditorHistoryAvailability.Available()
+                : EditorHistoryAvailability.Unavailable("The 2D asset draft changed outside this History entry.");
+        }
+        catch (Exception error) when (error is IOException or FormatException or InvalidOperationException)
+        {
+            return EditorHistoryAvailability.Unavailable(error.Message);
+        }
+    }
+
+    internal EditorHistoryResult ApplyHistory(
+        EditorHistoryChange change,
+        EditorHistoryDirection direction)
+    {
+        try
+        {
+            ChangeData data = DecodeChange(change);
+            if (!m_drafts.TryGetValue(data.documentId, out Draft? draft))
+                return EditorHistoryResult.Failure($"Reopen '{data.assetPath}' to use its History.");
+            byte[] expected = direction == EditorHistoryDirection.Undo ? data.after : data.before;
+            if (!draft.Capture().AsSpan().SequenceEqual(expected))
+                return EditorHistoryResult.Failure("The 2D asset draft changed outside this History entry.");
+            draft.Restore(direction == EditorHistoryDirection.Undo ? data.before : data.after);
+            EditorDocumentContext? document = documents.documents.FirstOrDefault(
+                value => value.documentId == data.documentId);
+            if (document is null)
+                return EditorHistoryResult.Failure($"Reopen '{data.assetPath}' to use its History.");
+            SynchronizeState(document, draft);
+            return EditorHistoryResult.Success();
+        }
+        catch (Exception error) when (error is IOException or FormatException or InvalidOperationException)
+        {
+            return EditorHistoryResult.Failure(error.Message);
+        }
+    }
+
+    internal static bool TryMergeHistory(
+        EditorHistoryChange older,
+        EditorHistoryChange newer,
+        out EditorHistoryChange? merged)
+    {
+        merged = null;
+        try
+        {
+            ChangeData first = DecodeChange(older);
+            ChangeData second = DecodeChange(newer);
+            if (older.mergeKey is null
+                || !string.Equals(older.mergeKey, newer.mergeKey, StringComparison.Ordinal)
+                || first.documentId != second.documentId
+                || !first.after.AsSpan().SequenceEqual(second.before)) return false;
+            var combined = new ChangeData(first.documentId, second.assetPath, first.before, second.after);
+            merged = new EditorHistoryChange(
+                Rendering2DIds.assetDraftHistory,
+                EditorHistoryPayload.FromBytes(EncodeChange(combined)),
+                older.mergeKey);
+            return true;
+        }
+        catch (Exception error) when (error is IOException or FormatException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private void RecordApplied(
+        EditorDocumentContext context,
+        Draft draft,
+        byte[] before,
+        string name,
+        string? mergeKey = null)
+    {
+        byte[] after = draft.Capture();
+        if (before.AsSpan().SequenceEqual(after)) return;
+        var data = new ChangeData(context.documentId, context.assetPath, before, after);
+        var change = new EditorHistoryChange(
+            Rendering2DIds.assetDraftHistory,
+            EditorHistoryPayload.FromBytes(EncodeChange(data)),
+            mergeKey);
+        try
+        {
+            history.RecordApplied(name, change);
+            SynchronizeState(context, draft);
+        }
+        catch
+        {
+            change.Dispose();
+            draft.Restore(before);
+            SynchronizeState(context, draft);
+            throw;
+        }
+    }
+
+    private void SynchronizeState(EditorDocumentContext context, Draft draft)
+    {
+        byte[] current = draft.Capture();
+        byte[] baseline = m_baselines[context.documentId];
+        context.SetViewParameter("draft", Convert.ToBase64String(current));
+        context.SetViewParameter("baseline", Convert.ToBase64String(baseline));
+        documents.SetDirty(context.documentId, !current.AsSpan().SequenceEqual(baseline));
+    }
+
+    private static byte[] EncodeChange(ChangeData data)
+    {
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream);
+        writer.Write(data.documentId.ToByteArray());
+        writer.Write(data.assetPath);
+        writer.Write(data.before.Length);
+        writer.Write(data.before);
+        writer.Write(data.after.Length);
+        writer.Write(data.after);
+        return stream.ToArray();
+    }
+
+    private static ChangeData DecodeChange(EditorHistoryChange change)
+    {
+        if (!string.Equals(change.kind, Rendering2DIds.assetDraftHistory, StringComparison.Ordinal))
+            throw new InvalidOperationException("The History entry does not belong to 2D asset drafts.");
+        using var stream = new MemoryStream(change.payload.ReadBytes(), writable: false);
+        using var reader = new BinaryReader(stream);
+        var documentId = new Guid(reader.ReadBytes(16));
+        string assetPath = reader.ReadString();
+        byte[] before = ReadBytes(reader);
+        byte[] after = ReadBytes(reader);
+        if (stream.Position != stream.Length) throw new FormatException("The 2D asset History payload has trailing data.");
+        return new ChangeData(documentId, assetPath, before, after);
+
+        static byte[] ReadBytes(BinaryReader reader)
+        {
+            int length = reader.ReadInt32();
+            if (length < 0 || length > 268_435_456) throw new FormatException("The 2D asset History payload length is invalid.");
+            byte[] bytes = reader.ReadBytes(length);
+            if (bytes.Length != length) throw new EndOfStreamException("The 2D asset History payload is incomplete.");
+            return bytes;
+        }
+    }
+
+    private sealed record ChangeData(Guid documentId, string assetPath, byte[] before, byte[] after);
 
     private Draft CreateDraft(EditorDocumentContext context)
     {
@@ -149,7 +475,7 @@ internal sealed class Rendering2DAssetDocumentProvider(
         if (string.Equals(extension, ".itileset2d", StringComparison.OrdinalIgnoreCase))
             return new TileSetDraft(Load<TileSet2DAsset>(context));
         if (string.Equals(extension, ".itilemap2d", StringComparison.OrdinalIgnoreCase))
-            return new TilemapDraft(Load<Tilemap2DAsset>(context), history, AssetPath.Parse(context.assetPath));
+            return new TilemapDraft(Load<Tilemap2DAsset>(context));
         if (string.Equals(extension, ".ipostprocess2d", StringComparison.OrdinalIgnoreCase))
             return new PostProcessDraft(Load<PostProcessProfile2DAsset>(context));
         if (string.Equals(extension, ".iparticle2d", StringComparison.OrdinalIgnoreCase))
@@ -174,8 +500,62 @@ internal sealed class Rendering2DAssetDocumentProvider(
 
     private abstract class Draft
     {
+        internal abstract byte[] Capture();
+        internal abstract void Restore(byte[] bytes);
         internal abstract bool Draw(IEditorPreviewService previews);
         internal abstract bool Save(AssetPath path);
+
+        internal virtual void DrawInspector(
+            InspectionDrawContext context,
+            IEditorPreviewService previews,
+            IInspectionPropertyEditService edits,
+            bool readOnly)
+        {
+            byte[] before = Capture();
+            if (!readOnly && Draw(previews))
+                ((InspectorDraftEdits)edits).RecordApplied(before, "Edit 2D Asset");
+            else if (readOnly)
+            {
+                ImGui.BeginDisabled();
+                try
+                {
+                    _ = Draw(previews);
+                }
+                finally
+                {
+                    ImGui.EndDisabled();
+                }
+            }
+        }
+    }
+
+    private sealed class InspectorDraftEdits(
+        Rendering2DAssetDocumentProvider provider,
+        EditorDocumentContext context,
+        Draft draft,
+        bool readOnly) : IInspectionPropertyEditService
+    {
+        public bool ChangeProperty(
+            object owner,
+            string propertyName,
+            Action mutation,
+            string historyName)
+        {
+            if (readOnly)
+                return false;
+            byte[] before = draft.Capture();
+            mutation();
+            provider.RecordApplied(
+                context,
+                draft,
+                before,
+                historyName,
+                context.documentId.ToString("N") + ":" + propertyName);
+            return true;
+        }
+
+        internal void RecordApplied(byte[] before, string historyName)
+            => provider.RecordApplied(context, draft, before, historyName);
     }
 
     private sealed class AtlasDraft(SpriteAtlas2DAsset asset) : Draft
@@ -192,6 +572,16 @@ internal sealed class Rendering2DAssetDocumentProvider(
         private float m_pivotX = 0.5f;
         private float m_pivotY = 0.5f;
         private string m_packingStatus = string.Empty;
+
+        internal override byte[] Capture() => EditorAssets.EncodeNative(CreateAsset(normalize: false));
+
+        internal override void Restore(byte[] bytes)
+        {
+            SpriteAtlas2DAsset restored = EditorAssets.DecodeNative<SpriteAtlas2DAsset>(bytes);
+            m_packing = restored.packing;
+            m_slices.Clear();
+            m_slices.AddRange(restored.slices.Select(CloneSlice));
+        }
 
         internal override bool Draw(IEditorPreviewService previews)
         {
@@ -339,13 +729,27 @@ internal sealed class Rendering2DAssetDocumentProvider(
 
         internal override bool Save(AssetPath path)
         {
-            m_packing.maximumWidth = Math.Max(1, m_packing.maximumWidth);
-            m_packing.maximumHeight = Math.Max(1, m_packing.maximumHeight);
-            m_packing.padding = Math.Max(0, m_packing.padding);
-            m_packing.extrude = Math.Max(0, m_packing.extrude);
-            asset.packing = m_packing;
-            asset.SetSlices(m_slices);
-            return Rendering2DAssets.SaveAtlas(path, asset);
+            return Rendering2DAssets.SaveAtlas(path, CreateAsset(normalize: true));
+        }
+
+        private SpriteAtlas2DAsset CreateAsset(bool normalize)
+        {
+            SpriteAtlasPackingSettings2D packing = m_packing;
+            if (normalize)
+            {
+                packing.maximumWidth = Math.Max(1, packing.maximumWidth);
+                packing.maximumHeight = Math.Max(1, packing.maximumHeight);
+                packing.padding = Math.Max(0, packing.padding);
+                packing.extrude = Math.Max(0, packing.extrude);
+            }
+            return new SpriteAtlas2DAsset
+            {
+                packing = packing,
+                sources = asset.sources,
+                slices = m_slices.Select(CloneSlice).ToArray(),
+                pages = asset.pages,
+                regions = asset.regions
+            };
         }
 
         private bool SliceGrid()
@@ -456,11 +860,17 @@ internal sealed class Rendering2DAssetDocumentProvider(
 
     private sealed class AnimationDraft(SpriteAnimation2DAsset asset) : Draft
     {
-        private readonly SpriteAnimationClip2D[] m_clips = CloneClips(asset.clips);
+        private SpriteAnimationClip2D[] m_clips = CloneClips(asset.clips);
         private int m_selectedClip;
         private float m_playhead;
         private bool m_playing;
         private bool m_onionSkin;
+
+        internal override byte[] Capture()
+            => EditorAssets.EncodeNative(new SpriteAnimation2DAsset { clips = CloneClips(m_clips) });
+
+        internal override void Restore(byte[] bytes)
+            => m_clips = CloneClips(EditorAssets.DecodeNative<SpriteAnimation2DAsset>(bytes).clips);
 
         internal override bool Draw(IEditorPreviewService previews)
         {
@@ -554,8 +964,9 @@ internal sealed class Rendering2DAssetDocumentProvider(
 
         internal override bool Save(AssetPath path)
         {
-            asset.clips = (SpriteAnimationClip2D[])m_clips.Clone();
-            return Rendering2DAssets.SaveAnimation(path, asset);
+            return Rendering2DAssets.SaveAnimation(
+                path,
+                new SpriteAnimation2DAsset { clips = CloneClips(m_clips) });
         }
 
         private static SpriteAnimationClip2D[] CloneClips(SpriteAnimationClip2D[] source)
@@ -613,7 +1024,13 @@ internal sealed class Rendering2DAssetDocumentProvider(
 
     private sealed class TileSetDraft(TileSet2DAsset asset) : Draft
     {
-        private readonly TileDefinition2D[] m_tiles = (TileDefinition2D[])asset.tiles.Clone();
+        private TileDefinition2D[] m_tiles = (TileDefinition2D[])asset.tiles.Clone();
+
+        internal override byte[] Capture()
+            => EditorAssets.EncodeNative(new TileSet2DAsset { tiles = (TileDefinition2D[])m_tiles.Clone() });
+
+        internal override void Restore(byte[] bytes)
+            => m_tiles = (TileDefinition2D[])EditorAssets.DecodeNative<TileSet2DAsset>(bytes).tiles.Clone();
 
         internal override bool Draw(IEditorPreviewService previews)
         {
@@ -639,17 +1056,16 @@ internal sealed class Rendering2DAssetDocumentProvider(
 
         internal override bool Save(AssetPath path)
         {
-            asset.tiles = (TileDefinition2D[])m_tiles.Clone();
-            return Rendering2DAssets.SaveTileSet(path, asset);
+            return Rendering2DAssets.SaveTileSet(
+                path,
+                new TileSet2DAsset { tiles = (TileDefinition2D[])m_tiles.Clone() });
         }
     }
 
-    private sealed class TilemapDraft(
-        Tilemap2DAsset asset,
-        IEditorHistory history,
-        AssetPath path) : Draft
+    private sealed class TilemapDraft(Tilemap2DAsset asset) : Draft
     {
-        private readonly TilemapLayer2D[] m_layers = (TilemapLayer2D[])asset.layers.Clone();
+        private readonly Tilemap2DAsset m_asset = EditorAssets.DecodeNative<Tilemap2DAsset>(EditorAssets.EncodeNative(asset));
+        private TilemapLayer2D[] m_layers = (TilemapLayer2D[])asset.layers.Clone();
         private float m_cellWidth = asset.cellSize.x;
         private float m_cellHeight = asset.cellSize.y;
         private int m_chunkSize = asset.chunkSize;
@@ -663,13 +1079,31 @@ internal sealed class Rendering2DAssetDocumentProvider(
         private int m_moveY;
         private int m_selectedCount;
 
+        internal override byte[] Capture()
+            => EditorAssets.EncodeNative(CreateAsset(normalize: false));
+
+        internal override void Restore(byte[] bytes)
+        {
+            Tilemap2DAsset restored = EditorAssets.DecodeNative<Tilemap2DAsset>(bytes);
+            m_asset.tileSet = restored.tileSet;
+            m_asset.cellSize = restored.cellSize;
+            m_asset.chunkSize = restored.chunkSize;
+            m_asset.layers = restored.layers;
+            m_asset.chunks = restored.chunks;
+            m_cellWidth = restored.cellSize.x;
+            m_cellHeight = restored.cellSize.y;
+            m_chunkSize = restored.chunkSize;
+            m_layers = (TilemapLayer2D[])restored.layers.Clone();
+        }
+
         internal override bool Draw(IEditorPreviewService previews)
         {
             ImGui.SeparatorText("Grid");
             bool changed = ImGui.InputFloat("Cell Width", ref m_cellWidth);
             changed |= ImGui.InputFloat("Cell Height", ref m_cellHeight);
             changed |= ImGui.InputInt("Chunk Size", ref m_chunkSize);
-            ImGui.Text($"Sparse chunks: {asset.chunks.Length}   Revision: {asset.revision}");
+            m_chunkSize = Math.Max(1, m_chunkSize);
+            ImGui.Text($"Sparse chunks: {m_asset.chunks.Length}   Revision: {m_asset.revision}");
 
             ImGui.SeparatorText("Tile Palette");
             _ = ImGui.InputInt("Active Layer", ref m_layerId);
@@ -685,39 +1119,39 @@ internal sealed class Rendering2DAssetDocumentProvider(
                 color = InnoEngine.Mathematics.Color.WHITE
             };
             if (ImGui.Button("Brush"))
-                changed |= Record("Paint Tile", TilemapEditing2D.Brush(asset, m_layerId, new TilemapPosition2D(m_x, m_y), paint));
+                changed |= Record("Paint Tile", TilemapEditing2D.Brush(m_asset, m_layerId, new TilemapPosition2D(m_x, m_y), paint));
             ImGui.SameLine();
             if (ImGui.Button("Erase"))
-                changed |= Record("Erase Tile", TilemapEditing2D.Erase(asset, m_layerId, [new TilemapPosition2D(m_x, m_y)]));
+                changed |= Record("Erase Tile", TilemapEditing2D.Erase(m_asset, m_layerId, [new TilemapPosition2D(m_x, m_y)]));
             ImGui.SameLine();
-            if (ImGui.Button("Pick") && asset.TryGetCell(m_x, m_y, m_layerId, out TilemapCell2D picked))
+            if (ImGui.Button("Pick") && m_asset.TryGetCell(m_x, m_y, m_layerId, out TilemapCell2D picked))
                 m_tileId = picked.tileId;
             ImGui.SameLine();
             if (ImGui.Button("Box"))
-                changed |= Record("Box Paint Tiles", TilemapEditing2D.Box(asset, m_layerId, selection, paint));
+                changed |= Record("Box Paint Tiles", TilemapEditing2D.Box(m_asset, m_layerId, selection, paint));
             ImGui.SameLine();
             if (ImGui.Button("Fill"))
             {
                 changed |= Record(
                     "Fill Tiles",
                     TilemapEditing2D.Fill(
-                        asset,
+                        m_asset,
                         m_layerId,
                         new TilemapPosition2D(m_x, m_y),
                         selection,
                         paint));
             }
             if (ImGui.Button("Select"))
-                m_selectedCount = TilemapEditing2D.Select(asset, m_layerId, selection).Count;
+                m_selectedCount = TilemapEditing2D.Select(m_asset, m_layerId, selection).Count;
             ImGui.SameLine();
             _ = ImGui.InputInt("Move X", ref m_moveX);
             _ = ImGui.InputInt("Move Y", ref m_moveY);
             if (ImGui.Button("Move Selection"))
-                changed |= Record("Move Tiles", TilemapEditing2D.Move(asset, m_layerId, selection, m_moveX, m_moveY));
+                changed |= Record("Move Tiles", TilemapEditing2D.Move(m_asset, m_layerId, selection, m_moveX, m_moveY));
             ImGui.SameLine();
             if (ImGui.Button("Stamp Selection"))
             {
-                IReadOnlyList<TilemapCell2D> selected = TilemapEditing2D.Select(asset, m_layerId, selection);
+                IReadOnlyList<TilemapCell2D> selected = TilemapEditing2D.Select(m_asset, m_layerId, selection);
                 TilemapStampCell2D[] stamp = selected
                     .Select(cell => new TilemapStampCell2D(
                         cell.x - selection.minimumX,
@@ -727,7 +1161,7 @@ internal sealed class Rendering2DAssetDocumentProvider(
                 changed |= Record(
                     "Stamp Tiles",
                     TilemapEditing2D.Stamp(
-                        asset,
+                        m_asset,
                         m_layerId,
                         new TilemapPosition2D(selection.minimumX + m_moveX, selection.minimumY + m_moveY),
                         stamp));
@@ -769,18 +1203,27 @@ internal sealed class Rendering2DAssetDocumentProvider(
         {
             if (!stroke.hasChanges)
                 return false;
-            TilemapHistory2D.RecordApplied(history, name, path, asset, stroke);
             return true;
         }
 
         internal override bool Save(AssetPath path)
         {
-            asset.cellSize = new InnoEngine.Mathematics.Vector2(
-                MathF.Max(0.0001f, m_cellWidth),
-                MathF.Max(0.0001f, m_cellHeight));
-            asset.chunkSize = Math.Max(1, m_chunkSize);
-            asset.layers = (TilemapLayer2D[])m_layers.Clone();
-            return Rendering2DAssets.SaveTilemap(path, asset);
+            return Rendering2DAssets.SaveTilemap(path, CreateAsset(normalize: true));
+        }
+
+        private Tilemap2DAsset CreateAsset(bool normalize)
+        {
+            float width = normalize ? MathF.Max(0.0001f, m_cellWidth) : m_cellWidth;
+            float height = normalize ? MathF.Max(0.0001f, m_cellHeight) : m_cellHeight;
+            int chunkSize = normalize ? Math.Max(1, m_chunkSize) : Math.Max(1, m_chunkSize);
+            return new Tilemap2DAsset
+            {
+                tileSet = m_asset.tileSet,
+                cellSize = new InnoEngine.Mathematics.Vector2(width, height),
+                chunkSize = chunkSize,
+                layers = (TilemapLayer2D[])m_layers.Clone(),
+                chunks = m_asset.chunks
+            };
         }
     }
 
@@ -792,8 +1235,27 @@ internal sealed class Rendering2DAssetDocumentProvider(
         private bool m_toneMapping = asset.toneMapping;
         private float m_bloomIntensity = asset.bloomIntensity;
         private float m_bloomThreshold = asset.bloomThreshold;
+        private int m_bloomLevels = asset.bloomLevels;
+        private float m_bloomScatter = asset.bloomScatter;
         private float m_vignette = asset.vignette;
         private int m_pixelation = asset.pixelation;
+
+        internal override byte[] Capture() => EditorAssets.EncodeNative(CreateAsset(normalize: false));
+
+        internal override void Restore(byte[] bytes)
+        {
+            PostProcessProfile2DAsset restored = EditorAssets.DecodeNative<PostProcessProfile2DAsset>(bytes);
+            m_exposure = restored.exposure;
+            m_contrast = restored.contrast;
+            m_saturation = restored.saturation;
+            m_toneMapping = restored.toneMapping;
+            m_bloomIntensity = restored.bloomIntensity;
+            m_bloomThreshold = restored.bloomThreshold;
+            m_bloomLevels = restored.bloomLevels;
+            m_bloomScatter = restored.bloomScatter;
+            m_vignette = restored.vignette;
+            m_pixelation = restored.pixelation;
+        }
 
         internal override bool Draw(IEditorPreviewService previews)
         {
@@ -805,34 +1267,130 @@ internal sealed class Rendering2DAssetDocumentProvider(
             ImGui.SeparatorText("Effects");
             changed |= ImGui.InputFloat("Bloom Intensity", ref m_bloomIntensity);
             changed |= ImGui.InputFloat("Bloom Threshold", ref m_bloomThreshold);
+            changed |= ImGui.InputInt("Bloom Levels", ref m_bloomLevels);
+            changed |= ImGui.SliderFloat("Bloom Scatter", ref m_bloomScatter, 0f, 1f);
             changed |= ImGui.SliderFloat("Vignette", ref m_vignette, 0f, 1f);
             changed |= ImGui.InputInt("Pixelation", ref m_pixelation);
             return changed;
         }
 
+        internal override void DrawInspector(
+            InspectionDrawContext context,
+            IEditorPreviewService previews,
+            IInspectionPropertyEditService edits,
+            bool readOnly)
+        {
+            ImGui.SeparatorText("Color and Tone");
+            Property("exposure", "Exposure", () => m_exposure, value => m_exposure = value);
+            Property("contrast", "Contrast", () => m_contrast, value => m_contrast = value, minimum: 0.0001);
+            Property("saturation", "Saturation", () => m_saturation, value => m_saturation = value, minimum: 0);
+            Property("toneMapping", "Tone Mapping", () => m_toneMapping, value => m_toneMapping = value);
+
+            ImGui.SeparatorText("Bloom");
+            Property("bloomIntensity", "Intensity", () => m_bloomIntensity, value => m_bloomIntensity = value, minimum: 0);
+            Property("bloomThreshold", "Threshold", () => m_bloomThreshold, value => m_bloomThreshold = value, minimum: 0);
+            Property("bloomLevels", "Levels", () => m_bloomLevels, value => m_bloomLevels = value, minimum: 1, maximum: 8);
+            Property("bloomScatter", "Scatter", () => m_bloomScatter, value => m_bloomScatter = value, minimum: 0, maximum: 1);
+
+            ImGui.SeparatorText("Screen Effects");
+            Property("vignette", "Vignette", () => m_vignette, value => m_vignette = value, minimum: 0, maximum: 1);
+            Property("pixelation", "Pixelation", () => m_pixelation, value => m_pixelation = value, minimum: 1);
+
+            void Property<T>(
+                string path,
+                string label,
+                Func<T> getter,
+                Action<T> setter,
+                double? minimum = null,
+                double? maximum = null)
+            {
+                context.properties.DrawValue(
+                    context.editorContext,
+                    this,
+                    "post-process." + path,
+                    label,
+                    typeof(T),
+                    () => getter(),
+                    value => setter(value is T typed
+                        ? typed
+                        : throw new InvalidOperationException($"'{path}' received an incompatible value.")),
+                    edits,
+                    readOnly,
+                    minimum: minimum,
+                    maximum: maximum);
+            }
+        }
+
         internal override bool Save(AssetPath path)
         {
-            asset.exposure = m_exposure;
-            asset.contrast = MathF.Max(0.0001f, m_contrast);
-            asset.saturation = MathF.Max(0f, m_saturation);
-            asset.toneMapping = m_toneMapping;
-            asset.bloomIntensity = MathF.Max(0f, m_bloomIntensity);
-            asset.bloomThreshold = MathF.Max(0f, m_bloomThreshold);
-            asset.vignette = Math.Clamp(m_vignette, 0f, 1f);
-            asset.pixelation = Math.Max(1, m_pixelation);
-            return Rendering2DAssets.SavePostProcess(path, asset);
+            return Rendering2DAssets.SavePostProcess(path, CreateAsset(normalize: true));
         }
+
+        private PostProcessProfile2DAsset CreateAsset(bool normalize)
+            => new()
+            {
+                exposure = m_exposure,
+                contrast = normalize ? MathF.Max(0.0001f, m_contrast) : m_contrast,
+                saturation = normalize ? MathF.Max(0f, m_saturation) : m_saturation,
+                toneMapping = m_toneMapping,
+                bloomIntensity = normalize ? MathF.Max(0f, m_bloomIntensity) : m_bloomIntensity,
+                bloomThreshold = normalize ? MathF.Max(0f, m_bloomThreshold) : m_bloomThreshold,
+                bloomLevels = normalize ? Math.Clamp(m_bloomLevels, 1, 8) : m_bloomLevels,
+                bloomScatter = normalize ? Math.Clamp(m_bloomScatter, 0f, 1f) : m_bloomScatter,
+                vignette = normalize ? Math.Clamp(m_vignette, 0f, 1f) : m_vignette,
+                pixelation = normalize ? Math.Max(1, m_pixelation) : m_pixelation
+            };
     }
 
     private sealed class ParticleDraft(ParticleEffect2DAsset asset) : Draft
     {
+        private SpriteReference2D m_sprite = asset.sprite;
+        private SpriteReference2D[] m_flipbookFrames = asset.flipbookFrames.ToArray();
+        private float m_flipbookFramesPerSecond = asset.flipbookFramesPerSecond;
+        private MaterialAsset? m_material = asset.material;
+        private SpriteBlendMode2D m_blendMode = asset.blendMode;
+        private SpriteSamplingMode2D m_sampling = asset.sampling;
+        private ParticleEmitterShape2D m_shape = asset.shape;
+        private ParticleSimulationSpace2D m_simulationSpace = asset.simulationSpace;
         private int m_maximumParticles = asset.maximumParticles;
         private float m_emissionRate = asset.emissionRate;
         private float m_minimumLifetime = asset.minimumLifetime;
         private float m_maximumLifetime = asset.maximumLifetime;
         private float m_minimumSpeed = asset.minimumSpeed;
         private float m_maximumSpeed = asset.maximumSpeed;
+        private InnoEngine.Mathematics.Vector2 m_shapeSize = asset.shapeSize;
+        private float m_coneAngle = asset.coneAngle;
+        private InnoEngine.Mathematics.Vector2 m_gravity = asset.gravity;
         private float m_noiseStrength = asset.noiseStrength;
+        private ParticleCurve2D m_sizeOverLifetime = Clone(asset.sizeOverLifetime);
+        private ParticleGradient2D m_colorOverLifetime = Clone(asset.colorOverLifetime);
+
+        internal override byte[] Capture() => EditorAssets.EncodeNative(CreateAsset(normalize: false));
+
+        internal override void Restore(byte[] bytes)
+        {
+            ParticleEffect2DAsset restored = EditorAssets.DecodeNative<ParticleEffect2DAsset>(bytes);
+            m_sprite = restored.sprite;
+            m_flipbookFrames = restored.flipbookFrames.ToArray();
+            m_flipbookFramesPerSecond = restored.flipbookFramesPerSecond;
+            m_material = restored.material;
+            m_blendMode = restored.blendMode;
+            m_sampling = restored.sampling;
+            m_shape = restored.shape;
+            m_simulationSpace = restored.simulationSpace;
+            m_maximumParticles = restored.maximumParticles;
+            m_emissionRate = restored.emissionRate;
+            m_minimumLifetime = restored.minimumLifetime;
+            m_maximumLifetime = restored.maximumLifetime;
+            m_minimumSpeed = restored.minimumSpeed;
+            m_maximumSpeed = restored.maximumSpeed;
+            m_shapeSize = restored.shapeSize;
+            m_coneAngle = restored.coneAngle;
+            m_gravity = restored.gravity;
+            m_noiseStrength = restored.noiseStrength;
+            m_sizeOverLifetime = Clone(restored.sizeOverLifetime);
+            m_colorOverLifetime = Clone(restored.colorOverLifetime);
+        }
 
         internal override bool Draw(IEditorPreviewService previews)
         {
@@ -845,20 +1403,149 @@ internal sealed class Rendering2DAssetDocumentProvider(
             changed |= ImGui.InputFloat("Minimum Speed", ref m_minimumSpeed);
             changed |= ImGui.InputFloat("Maximum Speed", ref m_maximumSpeed);
             changed |= ImGui.InputFloat("Noise Strength", ref m_noiseStrength);
-            ImGui.Text($"Emitter: {asset.shape}   Space: {asset.simulationSpace}   Flipbook frames: {asset.flipbookFrames.Length}");
+            changed |= ImGui.InputFloat("Flipbook FPS", ref m_flipbookFramesPerSecond);
+            ImGui.Text($"Emitter: {m_shape}   Space: {m_simulationSpace}   Flipbook frames: {m_flipbookFrames.Length}");
             return changed;
+        }
+
+        internal override void DrawInspector(
+            InspectionDrawContext context,
+            IEditorPreviewService previews,
+            IInspectionPropertyEditService edits,
+            bool readOnly)
+        {
+            ImGui.SeparatorText("Rendering");
+            Property("sprite", "Sprite", () => m_sprite, value => m_sprite = value);
+            Property("flipbookFrames", "Flipbook Frames", () => m_flipbookFrames, value => m_flipbookFrames = value ?? []);
+            Property("flipbookFramesPerSecond", "Flipbook FPS", () => m_flipbookFramesPerSecond, value => m_flipbookFramesPerSecond = value, minimum: 0);
+            Property<MaterialAsset?>("material", "Material", () => m_material, value => m_material = value);
+            Property("blendMode", "Blend Mode", () => m_blendMode, value => m_blendMode = value);
+            Property("sampling", "Sampling", () => m_sampling, value => m_sampling = value);
+
+            ImGui.SeparatorText("Emitter");
+            Property("shape", "Shape", () => m_shape, value => m_shape = value);
+            Property("simulationSpace", "Simulation Space", () => m_simulationSpace, value => m_simulationSpace = value);
+            Property("maximumParticles", "Maximum Particles", () => m_maximumParticles, value => m_maximumParticles = value, minimum: 1);
+            Property("emissionRate", "Emission Rate", () => m_emissionRate, value => m_emissionRate = value, minimum: 0);
+            Property("shapeSize", "Shape Size", () => m_shapeSize, value => m_shapeSize = value);
+            Property("coneAngle", "Cone Angle", () => m_coneAngle, value => m_coneAngle = value, minimum: 0, maximum: 360);
+
+            ImGui.SeparatorText("Lifetime and Motion");
+            Property("minimumLifetime", "Minimum Lifetime", () => m_minimumLifetime, value => m_minimumLifetime = value, minimum: 0.0001);
+            Property("maximumLifetime", "Maximum Lifetime", () => m_maximumLifetime, value => m_maximumLifetime = value, minimum: 0.0001);
+            Property("minimumSpeed", "Minimum Speed", () => m_minimumSpeed, value => m_minimumSpeed = value);
+            Property("maximumSpeed", "Maximum Speed", () => m_maximumSpeed, value => m_maximumSpeed = value);
+            Property("gravity", "Gravity", () => m_gravity, value => m_gravity = value);
+            Property("noiseStrength", "Noise Strength", () => m_noiseStrength, value => m_noiseStrength = value);
+
+            ImGui.SeparatorText("Over Lifetime");
+            Property("sizeOverLifetime", "Size", () => m_sizeOverLifetime, value => m_sizeOverLifetime = value);
+            Property("colorOverLifetime", "Color", () => m_colorOverLifetime, value => m_colorOverLifetime = value);
+
+            void Property<T>(
+                string path,
+                string label,
+                Func<T> getter,
+                Action<T> setter,
+                double? minimum = null,
+                double? maximum = null)
+            {
+                context.properties.DrawValue(
+                    context.editorContext,
+                    this,
+                    "particle." + path,
+                    label,
+                    typeof(T),
+                    () => getter(),
+                    value => setter(value is T typed
+                        ? typed
+                        : value is null && default(T) is null
+                            ? default!
+                            : throw new InvalidOperationException($"'{path}' received an incompatible value.")),
+                    edits,
+                    readOnly,
+                    minimum: minimum,
+                    maximum: maximum);
+            }
         }
 
         internal override bool Save(AssetPath path)
         {
-            asset.maximumParticles = Math.Max(1, m_maximumParticles);
-            asset.emissionRate = MathF.Max(0f, m_emissionRate);
-            asset.minimumLifetime = MathF.Max(0.0001f, m_minimumLifetime);
-            asset.maximumLifetime = MathF.Max(asset.minimumLifetime, m_maximumLifetime);
-            asset.minimumSpeed = m_minimumSpeed;
-            asset.maximumSpeed = MathF.Max(m_minimumSpeed, m_maximumSpeed);
-            asset.noiseStrength = m_noiseStrength;
-            return Rendering2DAssets.SaveParticleEffect(path, asset);
+            return Rendering2DAssets.SaveParticleEffect(path, CreateAsset(normalize: true));
+        }
+
+        private ParticleEffect2DAsset CreateAsset(bool normalize)
+        {
+            float minimumLifetime = normalize ? MathF.Max(0.0001f, m_minimumLifetime) : m_minimumLifetime;
+            float minimumSpeed = m_minimumSpeed;
+            return new ParticleEffect2DAsset
+            {
+                sprite = m_sprite,
+                flipbookFrames = m_flipbookFrames.ToArray(),
+                flipbookFramesPerSecond = normalize ? MathF.Max(0f, m_flipbookFramesPerSecond) : m_flipbookFramesPerSecond,
+                material = m_material,
+                blendMode = m_blendMode,
+                sampling = m_sampling,
+                shape = m_shape,
+                simulationSpace = m_simulationSpace,
+                maximumParticles = normalize ? Math.Max(1, m_maximumParticles) : m_maximumParticles,
+                emissionRate = normalize ? MathF.Max(0f, m_emissionRate) : m_emissionRate,
+                minimumLifetime = minimumLifetime,
+                maximumLifetime = normalize ? MathF.Max(minimumLifetime, m_maximumLifetime) : m_maximumLifetime,
+                minimumSpeed = minimumSpeed,
+                maximumSpeed = normalize ? MathF.Max(minimumSpeed, m_maximumSpeed) : m_maximumSpeed,
+                shapeSize = m_shapeSize,
+                coneAngle = normalize ? Math.Clamp(m_coneAngle, 0f, 360f) : m_coneAngle,
+                gravity = m_gravity,
+                noiseStrength = m_noiseStrength,
+                sizeOverLifetime = Clone(m_sizeOverLifetime),
+                colorOverLifetime = Clone(m_colorOverLifetime)
+            };
+        }
+
+        private static ParticleCurve2D Clone(ParticleCurve2D value)
+        {
+            value.keys = value.keys?.ToArray() ?? [];
+            return value;
+        }
+
+        private static ParticleGradient2D Clone(ParticleGradient2D value)
+        {
+            value.keys = value.keys?.ToArray() ?? [];
+            return value;
         }
     }
+}
+
+/// <summary>Interprets neutral, reload-safe History records for every native Rendering2D asset draft.</summary>
+[EditorHistoryHandler(Rendering2DIds.assetDraftHistory)]
+public sealed class Rendering2DAssetDraftHistoryHandler(
+    Rendering2DAssetDocumentModule documents) : EditorHistoryHandler
+{
+    /// <inheritdoc />
+    protected override EditorHistoryAvailability Query(
+        EditorHistoryContext context,
+        EditorHistoryChange change,
+        EditorHistoryDirection direction)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        return documents.QueryHistory(change, direction);
+    }
+
+    /// <inheritdoc />
+    protected override EditorHistoryResult Apply(
+        EditorHistoryContext context,
+        EditorHistoryChange change,
+        EditorHistoryDirection direction)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        return documents.ApplyHistory(change, direction);
+    }
+
+    /// <inheritdoc />
+    protected override bool TryMerge(
+        EditorHistoryChange older,
+        EditorHistoryChange newer,
+        out EditorHistoryChange? merged)
+        => documents.TryMergeHistory(older, newer, out merged);
 }

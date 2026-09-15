@@ -165,11 +165,31 @@ when content changes. Save them through
 enforces project-configured frame bounds. Static ordinary-tile chunks acquire persistent instance buffers keyed by
 their stable map/owner/layer/chunk identity and exact content revision; animated and rule tiles stay transient.
 
+## Asset creation and Inspector authoring
+
+The File Browser **Create** submenu discovers this Plugin's `AssetCreationTemplate` subclasses and groups them
+under **Rendering 2D / Sprites**, **World**, and **Effects**. It can create Sprite Atlases, Sprite Animations,
+Tile Sets, Tilemaps, Particle Effects, Post Process Profiles, and a Render Pipeline already configured with
+`Rendering2DIds.pipeline`. The File Browser contains no 2D asset-type switch; source extension, name, ordering,
+and default content are supplied by the Plugin templates.
+
+Selecting any of the six native 2D content files opens a dedicated Inspector draft with shared Save/Revert and
+read-only Plugin-source behavior. Particle Effects expose sprite/flipbook, material, blending/sampling, emitter
+shape and simulation space, capacity/emission/lifetime/speed, gravity/noise, size curve, and color gradient.
+Post Process Profiles expose HDR, exposure, contrast, saturation, tone mapping, Bloom threshold/intensity/levels/
+scatter, vignette, and pixelation. Atlases, animations, tile sets, and tilemaps retain their specialized authoring
+tools through the same draft. Inspector selection and double-click document editing share one draft, so they do
+not overwrite each other or publish edits before Save.
+
+The complete asset audit intentionally separates authorable structured sources from imported products. Texture,
+geometry, audio, and arbitrary text/binary assets are created by importing their source files; producing an empty
+placeholder would not be a valid authoring workflow. Scene and Prefab creation remains owned by the Scene feature.
+
 ## Asset documents
 
-Double-click a native 2D asset in the Asset Browser to open the unified Documents panel. Documents are
-single-instance by persistent asset ID, retain only stable paths/IDs/tool/view values across script reload,
-and share dirty, Save, Save All, Apply, Revert, and close-confirmation behavior. Atlas documents use the
+Selecting or double-clicking a native 2D asset opens its dedicated Inspector backed by the headless Document Service.
+Drafts are single-instance by persistent asset ID, retain neutral asset bytes and stable paths/IDs/tool/view values
+across script reload, and share dirty, Save, Revert, Undo/Redo, and close behavior. Atlas drafts use the
 generation-scoped preview service, so GPU handles never enter asset state or survive device recreation.
 
 ## Custom materials

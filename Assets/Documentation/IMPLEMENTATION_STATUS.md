@@ -8,7 +8,7 @@ later phases.
 
 - Generic named texture-artifact protocol in Rendering Core, including stable asset/slot references, target
   compilation, last-good behavior, device-generation resolution, and Editor previews.
-- Reload-safe Editor document service and unified document host with single-instance focus, dirty state,
+- Reload-safe headless Editor document service with single-source ownership, dirty state,
   Save/Save All, Apply/Revert, close confirmation, and stable state restoration.
 - Reload-safe viewport-tool protocol with pointer capture, shortcuts, cursor/overlay hooks, coordinate
   conversion, and one history transaction per gesture.

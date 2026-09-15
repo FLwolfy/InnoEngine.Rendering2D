@@ -52,11 +52,9 @@ internal abstract class NativeRendering2DAssetImporter<TAsset> : AssetImporter<T
         => ValueTask.CompletedTask;
 }
 
+[AssetImporter(Rendering2DIds.spriteAtlasImporter)]
 internal sealed class SpriteAtlas2DImporter : NativeRendering2DAssetImporter<SpriteAtlas2DAsset>
 {
-    /// <inheritdoc />
-    public override string importerId => "inno.rendering.2d.sprite-atlas";
-
     /// <inheritdoc />
     public override IReadOnlyList<string> supportedExtensions { get; } = [".ispriteatlas2d"];
 
@@ -97,47 +95,37 @@ internal sealed class SpriteAtlas2DImporter : NativeRendering2DAssetImporter<Spr
     }
 }
 
+[AssetImporter(Rendering2DIds.spriteAnimationImporter)]
 internal sealed class SpriteAnimation2DImporter : NativeRendering2DAssetImporter<SpriteAnimation2DAsset>
 {
-    /// <inheritdoc />
-    public override string importerId => "inno.rendering.2d.sprite-animation";
-
     /// <inheritdoc />
     public override IReadOnlyList<string> supportedExtensions { get; } = [".ispriteanimation2d"];
 }
 
+[AssetImporter(Rendering2DIds.tileSetImporter)]
 internal sealed class TileSet2DImporter : NativeRendering2DAssetImporter<TileSet2DAsset>
 {
-    /// <inheritdoc />
-    public override string importerId => "inno.rendering.2d.tile-set";
-
     /// <inheritdoc />
     public override IReadOnlyList<string> supportedExtensions { get; } = [".itileset2d"];
 }
 
+[AssetImporter(Rendering2DIds.tilemapImporter)]
 internal sealed class Tilemap2DImporter : NativeRendering2DAssetImporter<Tilemap2DAsset>
 {
-    /// <inheritdoc />
-    public override string importerId => "inno.rendering.2d.tilemap";
-
     /// <inheritdoc />
     public override IReadOnlyList<string> supportedExtensions { get; } = [".itilemap2d"];
 }
 
+[AssetImporter(Rendering2DIds.postProcessImporter)]
 internal sealed class PostProcessProfile2DImporter : NativeRendering2DAssetImporter<PostProcessProfile2DAsset>
 {
-    /// <inheritdoc />
-    public override string importerId => "inno.rendering.2d.post-process";
-
     /// <inheritdoc />
     public override IReadOnlyList<string> supportedExtensions { get; } = [".ipostprocess2d"];
 }
 
+[AssetImporter(Rendering2DIds.particleEffectImporter)]
 internal sealed class ParticleEffect2DImporter : NativeRendering2DAssetImporter<ParticleEffect2DAsset>
 {
-    /// <inheritdoc />
-    public override string importerId => "inno.rendering.2d.particle-effect";
-
     /// <inheritdoc />
     public override IReadOnlyList<string> supportedExtensions { get; } = [".iparticle2d"];
 }

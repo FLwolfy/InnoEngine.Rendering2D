@@ -14,9 +14,6 @@ public sealed class Rendering2DProjectSettingsEditor : ProjectSettingEditor<Rend
     private string? m_pipelinePath;
     private string m_pipelineError = string.Empty;
     /// <inheritdoc />
-    public override ProjectSettingId settingId => Rendering2DProjectSettings.id;
-
-    /// <inheritdoc />
     public override string section => "Renderer";
 
     /// <inheritdoc />
@@ -73,9 +70,6 @@ public sealed class Rendering2DSortingLayersProjectSettingsEditor
 {
     private string m_newName = "Layer";
     private int m_newOrder;
-
-    /// <inheritdoc />
-    public override ProjectSettingId settingId => Rendering2DProjectSettings.id;
 
     /// <inheritdoc />
     public override string section => "Sorting Layers";
