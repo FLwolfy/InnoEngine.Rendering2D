@@ -508,7 +508,6 @@ internal static class Rendering2DFrameCollector
                     CollectSprite(
                         gameObject,
                         sprite,
-                        defaultMaterial,
                         settings,
                         cameraState.bounds,
                         lights,
@@ -820,7 +819,7 @@ internal static class Rendering2DFrameCollector
     {
         unavailable = false;
         var result = new List<MaskSnapshot>();
-        Dictionary<string, List<int>> consumers = CollectMaskConsumers(scope, camera, settings, cameraBounds, defaultMaterial);
+        Dictionary<string, List<int>> consumers = CollectMaskConsumers(scope, camera, settings, cameraBounds);
         if (consumers.Count == 0) return result;
         foreach (Rendering2DSceneEntry entry in scope.entries)
         {
@@ -1051,7 +1050,6 @@ internal static class Rendering2DFrameCollector
     private static void CollectSprite(
         GameObject owner,
         SpriteRenderer2D sprite,
-        MaterialAsset? defaultMaterial,
         Rendering2DProjectSettings settings,
         Rect cameraBounds,
         IReadOnlyList<Rendering2DLight> lights,
@@ -1088,9 +1086,9 @@ internal static class Rendering2DFrameCollector
             return;
 
         Color tint = sprite.color;
-        MaterialAsset? material = sprite.material ?? defaultMaterial;
+        MaterialAsset? material = sprite.material;
         if (material is null || material.isMissing)
-        { diagnostics.Add($"Sprite '{owner.name}' requires an available material and mask resources."); return; }
+        { diagnostics.Add($"Sprite '{owner.name}' has no explicitly assigned Material."); return; }
         int before = output.Count;
         bool supportsCrossFade = sprite.blendMode is SpriteBlendMode2D.Alpha
             or SpriteBlendMode2D.Premultiplied
@@ -1846,7 +1844,7 @@ internal static class Rendering2DFrameCollector
     }
 
     private static Dictionary<string, List<int>> CollectMaskConsumers(Rendering2DSceneScope scope, Camera2D camera,
-        Rendering2DProjectSettings settings, Rect cameraBounds, MaterialAsset? defaultMaterial)
+        Rendering2DProjectSettings settings, Rect cameraBounds)
     {
         var consumers = new Dictionary<string, List<int>>(StringComparer.Ordinal);
         foreach (Rendering2DSceneEntry entry in scope.entries)
@@ -1855,7 +1853,7 @@ internal static class Rendering2DFrameCollector
             if (!drawable.owner.activeInHierarchy || !camera.cullingMask.Contains(drawable.owner.layer)
                 || drawable.sprite is not { isActiveAndEnabled: true } sprite
                 || sprite.maskInteraction == SpriteMaskInteraction2D.None
-                || (sprite.material ?? defaultMaterial) is not { isMissing: false }
+                || sprite.material is not { isMissing: false }
                 || !TryResolveSprite(sprite, out SpriteSource source)) continue;
             float pixelsPerUnit = sprite.pixelsPerUnit > 0f ? sprite.pixelsPerUnit : MathF.Max(0.001f, settings.defaultPixelsPerUnit);
             Vector2 naturalSize = source.primitive == SpritePrimitive2D.None ? source.region.sourceSizePixels / pixelsPerUnit : Vector2.ONE;

@@ -26,8 +26,7 @@ A source-based 2D rendering plugin for [InnoEngine](https://github.com/FLwolfy/I
 - Unified Asset Browser documents for atlases, animations, tile sets, tilemaps, post-processing, and particles
 - Deterministic MaxRects atlas composition with trim, rotation, extrusion, and named multi-page texture artifacts
 - Plugin-owned project settings and native asset importers
-- Opt-in zero-allocation/P95 scale gates for 100,000 visible tiles, a million-cell sparse domain, and 32 lights
-- Native Metal, D3D11, D3D12, and Vulkan acceptance scripts plus a self-hosted GPU CI matrix
+- Native Metal, D3D11, D3D12, and Vulkan smoke validation plus a self-hosted GPU CI matrix
 
 Physics, navigation, audio, gameplay UI, skeletal animation, SpriteShape, and Aseprite/PSD importing remain
 separate product lines. Text is deliberately split into future `Inno.Text` and `Inno.Text.Rendering2D` plugins;
@@ -56,13 +55,13 @@ From this repository, launch the Inno Editor with the repository root as the pro
 dotnet run --project ../InnoEngine/src/composition/editor/host/Inno.Editor.Application -- .
 ```
 
-The editor imports the authored content under `Assets/` and regenerates `Library/`, IDE project files, logs, and other local state. Open `Assets/~Samples/SampleScene.iscene` for a working example in Edit or Play Mode. The same launch command accepts a project path with a trailing directory separator.
+The editor imports the authored content under `Assets/` and regenerates `Library/`, IDE project files, logs, and other local state. The same launch command accepts a project path with a trailing directory separator.
 
 The pipeline publishes diagnostics through `InnoEngine.Diagnostics.Diagnostic` and `DiagnosticSeverity`, using the reporter supplied by `RenderPipelineContext`. Scene input comes from the current identity-backed content scope; the plugin does not require an engine-owned 2D scene bridge or a native backend API.
 
-## GPU and performance acceptance
+## GPU validation
 
-On macOS arm64, run the complete Metal shader, GPU graph, scale, and allocation gate with:
+On macOS arm64, build the Editor and run the project through a finite Metal smoke session with:
 
 ```bash
 DOTNET_COMMAND=/Users/aaronliao/.dotnet/dotnet \
@@ -79,11 +78,10 @@ On a Windows x64 machine with a physical GPU and the requested driver installed,
   -PrepareEngine
 ```
 
-Valid Windows backend values are `d3d11`, `d3d12`, and `vulkan`. The script compiles both shared shader stages
-for the exact backend profile, rebuilds a deterministic 32-light/soft-shadow/five-level-Bloom scene, runs the
-native Editor, enforces zero allocations and P95 <= 5 ms over stable extraction and request submission, rejects
-known software renderers and post-warmup render-target creation, and treats any missing acceptance marker as
-failure. The checked-in GPU workflow intentionally uses
+Valid Windows backend values are `d3d11`, `d3d12`, and `vulkan`. The scripts build the matching Editor,
+run the ordinary plugin project for a fixed frame count, reject software renderers and fatal import/backend/
+teardown diagnostics, and rebuild generated Editor scripts with warnings as errors. They do not inject a hidden
+scene, mutate authored assets, or activate production-side acceptance branches. The checked-in GPU workflow uses
 self-hosted runners carrying the `gpu` label; a generic hosted VM is not accepted as hardware evidence.
 
 ## Use the plugin in a scene
@@ -107,6 +105,10 @@ sprite.primitive = SpritePrimitive2D.Circle;
 sprite.color = new Color(0.2f, 0.65f, 1f, 1f);
 sprite.size = new Vector2(2f, 2f);
 ```
+
+New Sprite renderers serialize an explicit reference to `Materials/DefaultSprite.imaterial`. `None` means no
+Material and suppresses that renderer with a diagnostic; the Pipeline never silently replaces a missing
+`SpriteRenderer2D.material`.
 
 Scenes without `Rendering2DSceneSystem` are skipped by this plugin, allowing 2D, 3D, and mixed scenes to coexist in the same project.
 
@@ -133,14 +135,19 @@ MyGame/
     └── rendering2d.iplugin
 ```
 
-Installed plugin mounts are read-only. To modify the plugin, edit this authoring project and export a new package. Content under a `~`-prefixed directory is distributed as an optional sample. Importing a sample preserves its `~` directory name and makes it available in the consuming project's Editor/Play Mode, but no `~` subtree enters a Player build. For a Player, author a scene outside `~` directories and select it in Build Settings. This plugin authoring project therefore leaves its Player startup scene unassigned.
+Installed plugin mounts are read-only. To modify the plugin, edit this authoring project and export a new package. This plugin authoring project leaves its Player startup scene unassigned; consuming projects author their own scenes and select them in Build Settings.
 
 ## Project layout
 
 ```text
 Assets/
 ├── Documentation/   Detailed design and authoring notes
-├── Editor/          Importers, settings UI, and viewport integration
+├── Editor/
+│   ├── Assets/      Creation, import, inspection, and document integration
+│   ├── Authoring/   Sprite-atlas and tilemap authoring algorithms
+│   ├── Settings/    Project settings UI
+│   ├── Shaders/     Internal Shader loading, templates, and previews
+│   └── Viewports/   Scene and Game viewport contributors
 ├── Materials/       Default sprite material
 ├── Pipelines/       Default 2D render pipeline asset
 ├── Runtime/
@@ -149,8 +156,9 @@ Assets/
 │   ├── Pipeline/    Render request and pipeline integration
 │   ├── Runtime/     Immutable frame extraction and batching
 │   └── Systems/     Per-scene 2D extraction system
-├── Shaders/         Sprite shader contract and BGFX shader sources
-└── ~Samples/        Optional sample content
+├── Shaders/
+│   ├── Sprite/      Default Sprite graph, graph-authored nodes, and private sources
+│   └── Pipeline/    Lighting, shadows, Bloom, and final-composite programs
 ```
 
 For the full feature contract, authoring APIs, camera composition rules, custom materials, and viewport behavior, see the [plugin documentation](Assets/Documentation/README.md).

@@ -1,4 +1,4 @@
-name: Rendering2D GPU Acceptance
+name: Rendering2D GPU Validation
 
 on:
   workflow_dispatch:
@@ -61,17 +61,17 @@ jobs:
       - name: Install MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Run shader, frame, allocation, and GPU acceptance
+      - name: Run GPU validation
         shell: pwsh
         working-directory: Rendering2D
         run: >-
           ./Tools/Validate-Rendering2D.ps1
           -EngineRoot ../InnoEngine
           -Backend ${{ matrix.backend }}
-          -SmokeFrames 600
+          -SmokeFrames 3000
           -PrepareEngine
 
-      - name: Upload GPU acceptance log
+      - name: Upload GPU validation log
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -114,14 +114,14 @@ jobs:
           dotnet run --project build/toolchains/Inno.Build.Toolchains.Bgfx -- native --config debug
           dotnet run --project build/toolchains/Inno.Build.Toolchains.Bgfx -- tools --config debug
 
-      - name: Run Metal shader, frame, allocation, and GPU acceptance
+      - name: Run Metal GPU validation
         shell: bash
         working-directory: Rendering2D
         env:
           DOTNET_COMMAND: dotnet
-        run: ./Tools/Validate-Rendering2D.sh ../InnoEngine 600
+        run: ./Tools/Validate-Rendering2D.sh ../InnoEngine 3000
 
-      - name: Upload GPU acceptance log
+      - name: Upload GPU validation log
         if: always()
         uses: actions/upload-artifact@v4
         with:

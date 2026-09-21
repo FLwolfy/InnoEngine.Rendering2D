@@ -8,6 +8,10 @@ later phases.
 
 - Generic named texture-artifact protocol in Rendering Core, including stable asset/slot references, target
   compilation, last-good behavior, device-generation resolution, and Editor previews.
+- Graph-authored reusable Shader nodes with multiple typed inputs/outputs, recursive import-time inlining, and
+  dependency/cycle validation. Sprite Vertex, Sprite Texture, and Sprite Surface are ordinary `.ishader` Function
+  nodes connected to standard Vertex/Fragment outputs; no Sprite-specific node compiler, Target, or Inspector path
+  remains.
 - Reload-safe headless Editor document service with single-source ownership, dirty state,
   Save/Save All, Apply/Revert, close confirmation, and stable state restoration.
 - Reload-safe viewport-tool protocol with pointer capture, shortcuts, cursor/overlay hooks, coordinate
@@ -41,23 +45,11 @@ later phases.
   attachment support is unavailable.
 - Asset Browser document entry points for atlas, animation, tile-set, tilemap, post-process, and particle
   sources. Atlas documents display generation-scoped texture previews.
-- A deterministic GPU acceptance sample builder that supplies one lit receiver, 32 visible dynamic-capable
-  lights, a soft-shadow light/caster pair, HDR emission, and a five-level Bloom profile. GPU acceptance refuses
-  to pass unless the active graph submits HDR light buffers, MRT direction output, D24S8 shadow volumes, and
-  the complete Bloom configuration.
-- A zero-managed-allocation stable frame gate with 32 warmups and 240 measured samples. It covers Scene,
-  runtime-camera, camera-stack snapshots, and the complete request-provider extraction/submission path while
-  enforcing P95 <= 5 ms. The opt-in scale fixture additionally
-  proves exactly 100,000 visible tiles in a 1,000,000-cell sparse domain with 32 visible lights under the same
-  allocation and latency budget.
 - BGFX transient textures, buffers, and exact-attachment framebuffers are pooled across isomorphic graph
-  generations. The GPU acceptance gate arms after 120 rendered frames and fails if any render target is created
-  afterward. The Editor Game View gate first forces 96 consecutive target-size changes to cover dock/window resize
-  churn; the Metal acceptance run for this revision completed all 96 rebuilds and observed zero steady-state
-  target rebuilds.
-- Checked-in Metal and Windows GPU validation entry points. They compile the shared shader sources for the
-  exact target profile, run 600 native Editor frames, reject software renderers/fatal diagnostics/tombstone
-  warnings, verify all GPU and allocation markers, and rebuild generated scripts with warnings as errors.
+  generations.
+- Checked-in Metal and Windows GPU validation entry points. They run the ordinary authored project for a finite
+  frame count, reject software renderers, fatal diagnostics, and tombstone warnings, and rebuild generated scripts
+  with warnings as errors. Validation does not inject a hidden scene or activate runtime acceptance branches.
 - Reproducible GameScripts and EditorScripts builds, Core Editor interaction tests, Rendering runtime tests,
   and atomic `.iplugin` export.
 
@@ -69,7 +61,7 @@ later phases.
 - Tilemaps cull sparse chunks before expansion and reuse persistent GPU buffers when a chunk revision is stable.
   The current tools run in the unified tilemap document; direct Scene viewport painting, a graphical palette,
   brush previews, and visual rule-tile authoring remain pending. Dirty revisions rebuild affected snapshots;
-  unchanged frames use the zero-allocation cached extraction path enforced by the performance gate.
+  unchanged frames reuse the cached extraction path.
 - Particles have deterministic simulation and instanced rendering. The full curve/gradient/flipbook authoring
   canvas and benchmark coverage remain pending.
 - The screen-space light list is currently emitted as capability-neutral raster work. A compute-tiled accelerator
@@ -85,10 +77,10 @@ later phases.
   Rendering Core and this plugin will not absorb those font-domain concepts.
 - Full Unity-class Hierarchy/Inspector/Asset Browser interaction set, command palette, global search, notification
   center, layout presets, and the specialized animation/tile/atlas canvases.
-- Fixed-seed screenshot image-difference baselines. Structural GPU, scale, allocation, and backend acceptance
-  gates are present; Windows D3D11/D3D12/Vulkan still require an attached self-hosted x64 GPU runner to produce
-  hardware evidence for a given revision.
+- Fixed-seed screenshot image-difference baselines and dedicated scale/allocation benchmark projects. The
+  checked-in GPU smoke workflow validates startup, imports, script compilation, and backend execution without
+  embedding benchmark fixtures in the production Plugin.
 - Skeletal animation, SpriteShape, Aseprite, and PSD extension plugins.
 
 These pending items require further implementation and must not be represented as complete until their tests
-and platform acceptance gates pass.
+and platform validation pass.

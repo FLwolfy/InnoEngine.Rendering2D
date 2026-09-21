@@ -2,7 +2,6 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using InnoEngine.Diagnostics;
-using InnoEngine.Logging;
 using InnoEngine.Rendering;
 
 namespace Inno.Rendering2D;
@@ -112,7 +111,6 @@ public sealed class Rendering2DPipeline : RenderPipeline
                 PublishOutputUnavailable(context, frameIndex, "Lighting");
                 continue;
             }
-            ValidateGpuAcceptance(pipelineState, frame, lighting);
             bool usesMasks = false;
             for (int batchIndex = 0; batchIndex < prepared.Length; batchIndex++)
             {
@@ -343,10 +341,7 @@ public sealed class Rendering2DPipeline : RenderPipeline
     {
         PipelineState pipelineState = state;
         if (frame.lights.Length == 0)
-        {
-            PublishGpuMaterialProgress(pipelineState, hasProgramReferences: false, lightReady: false, utilityReady: false);
             return default;
-        }
         bool lightReady = TryResolveInternalMaterial(
             context,
             m_lightMaterial,
@@ -361,7 +356,6 @@ public sealed class Rendering2DPipeline : RenderPipeline
             Rendering2DIds.opaqueRole,
             out RenderMaterialPass? utilityMaterial)
             && utilityMaterial is not null;
-        PublishGpuMaterialProgress(pipelineState, hasProgramReferences: m_lightMaterial is not null && m_shadowMaterial is not null, lightReady, utilityReady);
         if (!lightReady || !utilityReady)
         {
             return default;
@@ -550,85 +544,6 @@ public sealed class Rendering2DPipeline : RenderPipeline
             supportsMrt,
             lightDrawCount,
             shadowDrawCount);
-    }
-
-    private static void PublishGpuMaterialProgress(
-        PipelineState pipelineState,
-        bool hasProgramReferences,
-        bool lightReady,
-        bool utilityReady)
-    {
-        if (!pipelineState.gpuAcceptanceRequested)
-            return;
-        int status = (hasProgramReferences ? 1 : 0)
-            | (lightReady ? 2 : 0)
-            | (utilityReady ? 4 : 0);
-        if (pipelineState.gpuMaterialStatus == status)
-            return;
-        pipelineState.gpuMaterialStatus = status;
-        Log.Info(
-            $"Rendering2D GPU internal program state: configured={hasProgramReferences}, " +
-            $"light={lightReady}, shadow={utilityReady}.");
-    }
-
-    private static void ValidateGpuAcceptance(
-        PipelineState pipelineState,
-        Rendering2DFrame frame,
-        LightingFrameResources lighting)
-    {
-        bool environmentRequested = string.Equals(
-            Environment.GetEnvironmentVariable("INNO_RENDERING2D_RUN_GPU_ACCEPTANCE"),
-            "1",
-            StringComparison.Ordinal);
-        if (environmentRequested && !pipelineState.gpuAcceptanceDiagnosticsPublished)
-        {
-            pipelineState.gpuAcceptanceDiagnosticsPublished = true;
-            Log.Info(
-                $"Rendering2D GPU pipeline state: requested={pipelineState.gpuAcceptanceRequested}, " +
-                $"lights={frame.lights.Length}, shadows={frame.shadowCasters.Length}, " +
-                $"postProcess={frame.postProcess is not null}, " +
-                $"Bloom={frame.postProcess?.bloomLevels ?? 0}/{frame.postProcess?.bloomIntensity ?? 0f:F3}, " +
-                $"lighting={lighting.isValid}, HDR={lighting.usesHdr}, MRT={lighting.supportsMrt}, " +
-                $"stencil={lighting.supportsStencil}, draws={lighting.lightDrawCount}/{lighting.shadowDrawCount}.");
-        }
-        if (!pipelineState.gpuAcceptanceRequested
-            || pipelineState.gpuAcceptancePublished
-            || frame.postProcess is not Rendering2DPostProcessSettings profile
-            || profile.bloomIntensity <= 0f
-            || profile.bloomLevels < 2
-            || frame.shadowCasters.Length == 0)
-        {
-            return;
-        }
-        bool hasShadowLight = false;
-        for (int index = 0; index < frame.lights.Length; index++)
-        {
-            if (frame.lights[index].castShadows && frame.lights[index].intensity > 0f)
-            {
-                hasShadowLight = true;
-                break;
-            }
-        }
-        if (!hasShadowLight)
-            return;
-        if (frame.lights.Length < 32
-            || !lighting.isValid
-            || !lighting.usesHdr
-            || !lighting.supportsStencil
-            || !lighting.supportsMrt
-            || lighting.lightDrawCount == 0
-            || lighting.shadowDrawCount == 0)
-        {
-            throw new InvalidOperationException(
-                "Rendering2D GPU acceptance requires 32 visible lights, HDR light buffers, MRT direction output, " +
-                "D24S8 shadows, and at least one submitted light and shadow volume.");
-        }
-        pipelineState.gpuAcceptancePublished = true;
-        Log.Info(
-            $"Rendering2D GPU acceptance passed: {frame.lights.Length} lights, " +
-            $"{lighting.lightDrawCount} light draws, " +
-            $"{lighting.shadowDrawCount} shadow-volume draws, HDR/MRT/D24S8, " +
-            $"{profile.bloomLevels}-level Bloom.");
     }
 
     private LightDrawCommand[] PrepareLightCommands(
@@ -1680,11 +1595,6 @@ public sealed class Rendering2DPipeline : RenderPipeline
             lightSamplingFlipped = new byte[16];
             materialEffectNone = new byte[16];
             WriteFloat(lightSamplingFlipped, 0, 1f);
-            gpuAcceptanceRequested = string.Equals(
-                Environment.GetEnvironmentVariable("INNO_RENDERING2D_RUN_GPU_ACCEPTANCE"),
-                "1",
-                StringComparison.Ordinal);
-            gpuMaterialStatus = -1;
             builtinWhiteTextureId = new RenderPersistentResourceId("inno.rendering.2d.builtin.white");
             builtinNeutralNormalTextureId = new RenderPersistentResourceId("inno.rendering.2d.builtin.neutral-normal");
             sharedQuadVertexId = new RenderPersistentResourceId("inno.rendering.2d.shared-quad.vertices");
@@ -1821,10 +1731,6 @@ public sealed class Rendering2DPipeline : RenderPipeline
         internal RenderStencilState stencilWrite { get; }
         internal RenderStencilState stencilInsideTest { get; }
         internal RenderStencilState stencilOutsideTest { get; }
-        internal bool gpuAcceptanceRequested { get; }
-        internal bool gpuAcceptancePublished { get; set; }
-        internal bool gpuAcceptanceDiagnosticsPublished { get; set; }
-        internal int gpuMaterialStatus { get; set; }
     }
 
     private sealed record PassData(

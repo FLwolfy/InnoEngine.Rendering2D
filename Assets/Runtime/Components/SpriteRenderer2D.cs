@@ -1,4 +1,5 @@
 using System;
+using InnoEngine.Assets;
 using InnoEngine.Mathematics;
 using InnoEngine.Reflection;
 using InnoEngine.Rendering;
@@ -142,10 +143,10 @@ public sealed class SpriteRenderer2D : GameBehavior
     [ShowIf(nameof(sprite), InspectorCondition.Assigned)]
     public SpriteSamplingMode2D sampling { get; set; } = SpriteSamplingMode2D.PointClamp;
 
-    /// <summary>Gets or sets an optional material implementing the 2D sprite contract.</summary>
+    /// <summary>Gets or sets the explicitly assigned material implementing the 2D sprite contract.</summary>
     [SerializableProperty]
-    [Header("Appearance", "Tint and material are applied before blending with the camera target.")]
-    public MaterialAsset? material { get; set; }
+    [Header("Appearance", "Tint and the explicitly assigned Material are applied before blending with the camera target.")]
+    public MaterialAsset? material { get; set; } = LoadDefaultMaterial();
 
     /// <summary>Gets or sets the linear vertex tint.</summary>
     [SerializableProperty]
@@ -212,4 +213,7 @@ public sealed class SpriteRenderer2D : GameBehavior
         if (m_crossFadeWeight <= 0f)
             m_crossFadeSprite = default;
     }
+
+    private static MaterialAsset LoadDefaultMaterial()
+        => Assets.Load<MaterialAsset>(Assets.LocalPath(Rendering2DIds.defaultSpriteMaterialPath));
 }

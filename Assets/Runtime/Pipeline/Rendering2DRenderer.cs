@@ -704,7 +704,7 @@ public sealed class Rendering2DViewportFrame
     /// <summary>Gets frame-only data accepted by the 2D pipeline.</summary>
     public RenderFrameData data { get; }
 
-    /// <summary>Gets allocation-free aggregate counts for diagnostics and performance acceptance.</summary>
+    /// <summary>Gets allocation-free aggregate counts for diagnostics and external validation.</summary>
     public Rendering2DFrameStatistics statistics { get; }
 
     internal IReadOnlyList<string> diagnostics => m_frame.diagnostics;

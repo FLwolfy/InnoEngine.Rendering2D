@@ -1,7 +1,5 @@
 # Inno Rendering 2D
 
-Editor fixes and local evidence: [2026-09-10 acceptance report](EDITOR_ACCEPTANCE_2026_09_10.md).
-
 `Inno.Rendering.2D` is a source Plugin implemented exclusively through public Inno APIs. It owns every 2D
 concept—camera, sprites, atlas data, animation, tilemaps, lights, batching, shader contracts, project settings,
 and Editor viewport integration. The engine Rendering Core remains unaware of 2D.
@@ -10,12 +8,41 @@ and Editor viewport integration. The engine Rendering Core remains unaware of 2D
 
 ### Shader authoring and coverage
 
-Create a **2D / Sprite Surface** Shader template for a four-node starting graph. Its five blend roles share
-the same stage computations; lighting, shadow-volume preparation, Bloom and final composition are separate
-Pipeline-owned Shader assets. Materials only reference a Shader and override its exposed parameters.
+Create a **2D / Sprite** Shader template for an ordinary explicit-stage graph. Its five blend roles share
+the same Vertex and Fragment computations; lighting, shadow-volume preparation, Bloom and final composition are
+separate Pipeline-owned Shader assets. Materials only reference a Shader and override its exposed parameters.
 
-The Surface Output's optional **Vertex Offset** is world-space XYZ. Zero leaves the default instance geometry
-unchanged. Connected computations are lowered into the vertex stage; fragment-only Sprite texture sampling
+The Sprite implementation is composed from three ordinary Shader graphs: `SpriteVertex.ishader`,
+`SpriteTexture.ishader`, and `SpriteSurface.ishader`. Each declares a reusable typed Function interface and its
+complete internal graph. `DefaultSprite.ishader` connects those nodes to the standard Vertex Output and Fragment
+Output and owns the five passes and Sprite contract directly. There is no Sprite-specific node compiler, hidden
+stage builder, Domain Output, or `ShaderTarget`; editing a node graph changes the automatically discovered
+Create / Graph Nodes entry, ports, dependencies, and inlined computation through the same public engine protocol
+available to any plugin.
+
+`DefaultSprite.ishader` also uses the generic automatic Stage bridge: outputs from the graph-authored
+`Sprite Vertex` node connect directly to the Fragment-side `Sprite Texture` and `Sprite Surface` nodes. The
+compiler derives and shares the required Vertex-to-Fragment varyings; the authored graph does not contain
+duplicate `v_*` plumbing nodes. Any plugin can build the same pattern, or use **Collapse to Subgraph** on a
+same-Stage selection to create an input-only, output-only, or multi-port reusable `.ishader` node.
+
+Shader sources are grouped by ownership rather than kept in one flat directory:
+
+```text
+Shaders/
+├── Sprite/
+│   ├── DefaultSprite.ishader
+│   ├── Nodes/       Reusable graph-authored Sprite nodes
+│   └── Sources/     Private Sprite stage/function sources
+└── Pipeline/
+    ├── Lighting/
+    ├── Shadows/
+    └── PostProcessing/
+        └── Bloom/
+```
+
+The Sprite Vertex node's optional **Vertex Offset** is world-space XYZ. The default graph still connects an
+explicit `float3(0)` so its data flow remains visible. Connected computations are lowered into the vertex stage; fragment-only Sprite texture sampling
 cannot feed vertex positions. Set `SpriteRenderer2D.boundsPadding` to the maximum XY displacement in world units
 so CPU culling conservatively includes deformed vertices. This is a culling bound, not a geometry scale.
 
@@ -108,6 +135,12 @@ sprite.color = new Color(0.2f, 0.65f, 1f, 1f);
 sprite.size = new Vector2(2f, 2f);
 sprite.sortingLayer = "default";
 ```
+
+A newly created `SpriteRenderer2D` stores an explicit reference to the Plugin-owned
+`Materials/DefaultSprite.imaterial` asset (published as `Rendering2DIds.defaultSpriteMaterialPath`). The
+Inspector therefore shows the Material that will actually render the object. Clearing the field to `None`
+means that the renderer has no Material: the object is skipped with a diagnostic, and the Pipeline does not
+silently substitute its configured default.
 
 Assigning a valid atlas region or direct texture through `SpriteRenderer2D.sprite` takes precedence over
 `primitive`. Set `primitive` to
@@ -204,7 +237,7 @@ The default shader contains one technique with contract `inno.rendering.2d.sprit
 
 A custom shader can implement any or all of these roles and expose additional properties. Assign its material
 to a sprite or tilemap; the pipeline resolves the selected role through the normal Shader → Technique →
-Material contract rather than through hard-coded backend programs. All source stages are shared `.sc` files;
+Material contract rather than through hard-coded backend programs. All source stages are shared `.ishadersource` files;
 BGFX shaderc selects Metal, Direct3D, or another supported target profile.
 
 ## Editor viewport behavior
@@ -227,29 +260,19 @@ layouts, shared-quad descriptors, shader bindings, stencil states, and built-in 
 inside the active pipeline generation, so script reload does not retain stale scripting objects and steady
 frames do not rebuild pipeline generations.
 
-## Acceptance gates
+## GPU validation
 
 `Rendering2DViewportFrame.statistics` exposes immutable camera, batch, instance, lit-instance, light,
-shadow-caster, and Bloom counters without exposing internal batch objects. The opt-in performance gate warms 32
-frames and measures 240 stable snapshots. Scene camera, runtime camera, and camera stack must each allocate zero
-managed bytes; the automatic request provider separately measures its complete extraction/submission path with
-the same zero-allocation and P95-at-or-below-5-ms contract. The scale gate independently constructs a 1,000 by 1,000
-logical tile domain with exactly 100,000 visible occupied cells and 32 visible lights, verifies the captured
-counts, then applies the same allocation and latency threshold.
+shadow-caster, and Bloom counters without exposing internal batch objects. Applications and external test
+projects can use those counters for their own validation without adding benchmark fixtures or environment-variable
+branches to the production Plugin.
 
 `Tools/Validate-Rendering2D.sh` validates macOS arm64/Metal. `Tools/Validate-Rendering2D.ps1` validates Windows
-x64/D3D11, D3D12, or Vulkan. Both use the unified Shader graph pipeline after Editor extensions activate,
-rebuild the deterministic GPU acceptance sample in a temporary project copy, require HDR/MRT/D24S8 light and
-shadow draws plus five-level Bloom, reject tombstone-reference warnings and fatal/teardown diagnostics, and rebuild generated scripts
-with warnings as errors. They also force 96 consecutive Editor Game View render-target size changes before the
-steady-state boundary; after 120 stable rendered frames, they reject any new render-target allocation.
-`.github/workflows/rendering2d-gpu.yml` binds those commands to physical self-hosted GPU runners so a software
-adapter cannot be mistaken for backend validation.
-
-Acceptance commands are not registered in the Editor menu or command palette. Sample rebuilding runs only
-when a validation process explicitly sets `INNO_RENDERING2D_REBUILD_GPU_ACCEPTANCE=1`; ordinary Editor startup
-does not rebuild the sample. The Metal script defaults to 60,000 frames to allow cold script activation;
-the Windows script currently defaults to 600 frames and has not been validated on Windows hardware.
+x64/D3D11, D3D12, or Vulkan. Both build the matching Editor, run the ordinary authored project for a finite frame
+count, reject import, backend, reference, fatal, and teardown failures, and rebuild generated Editor scripts with
+warnings as errors. They never rebuild a hidden scene or mutate project assets. `.github/workflows/rendering2d-gpu.yml`
+binds those commands to physical self-hosted GPU runners so a software adapter cannot be mistaken for backend
+validation.
 
 ## Installation and authoring
 

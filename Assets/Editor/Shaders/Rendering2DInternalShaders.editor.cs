@@ -134,7 +134,8 @@ public static class Rendering2DInternalShaders
 
         internal GraphDocument Finish((string name, ShaderPassRoleId role, RenderBlendState blend)[] passes, ShaderDefinition? authored = null)
         {
-            var definition = new ShaderDefinition(name, m_properties.Concat(authored?.properties ?? []), authored?.keywords ?? [], passes.Select(pass => new ShaderPassDefinition(pass.name, ShaderProgramKind.Raster,
+            ShaderPropertyDefinition[] properties = MergeProperties(m_properties, authored?.properties ?? []);
+            var definition = new ShaderDefinition(name, properties, authored?.keywords ?? [], passes.Select(pass => new ShaderPassDefinition(pass.name, ShaderProgramKind.Raster,
                 renderState: new() { cull = ShaderCullMode.None, depthCompare = ShaderCompareFunction.Always, depthWrite = false, blend = pass.blend, colorWriteMask = 15 })),
                 techniques: [new(new("default"), contract, passes.Select(pass => new ShaderTechniquePass(pass.role, pass.name)))]);
             m_graph.SetMetadata(ShaderGraphDocument.definitionKey, ShaderGraphDocument.Encode(serialization.Serialize(definition, references), serialization, references));
@@ -142,6 +143,47 @@ public static class Rendering2DInternalShaders
             GraphDocument result = m_graph;
             foreach (var pass in passes) result = ShaderGraphPrograms.Bind(result, pass.name, m_stages, serialization, references);
             return result;
+        }
+
+        private static ShaderPropertyDefinition[] MergeProperties(
+            IEnumerable<ShaderPropertyDefinition> generated,
+            IEnumerable<ShaderPropertyDefinition> authored)
+        {
+            var properties = new List<ShaderPropertyDefinition>();
+            foreach (ShaderPropertyDefinition generatedProperty in generated)
+            {
+                if (properties.Any(value => value.id == generatedProperty.id))
+                    throw new InvalidOperationException(
+                        $"Shader property '{generatedProperty.id.value}' was generated more than once.");
+                properties.Add(generatedProperty);
+            }
+
+            foreach (ShaderPropertyDefinition authoredPropertyValue in authored)
+            {
+                ShaderPropertyDefinition authoredProperty = authoredPropertyValue;
+                int index = properties.FindIndex(value => value.id == authoredProperty.id);
+                if (index < 0)
+                {
+                    properties.Add(authoredProperty);
+                    continue;
+                }
+
+                ShaderPropertyDefinition generatedProperty = properties[index];
+                bool equivalentType = generatedProperty.type == authoredProperty.type
+                    || generatedProperty.type == ShaderPropertyType.Vector4 && authoredProperty.type == ShaderPropertyType.Color
+                    || generatedProperty.type == ShaderPropertyType.Color && authoredProperty.type == ShaderPropertyType.Vector4;
+                if (!equivalentType
+                    || generatedProperty.bindingKind != authoredProperty.bindingKind
+                    || generatedProperty.storageAccess != authoredProperty.storageAccess)
+                    throw new InvalidOperationException(
+                        $"Shader property '{authoredProperty.id.value}' has conflicting generated and authored declarations.");
+
+                // The authored declaration owns user-facing metadata, defaults and binding scope.
+                // Target-generated stage inputs contribute only the stages that consume that property.
+                authoredProperty.stages |= generatedProperty.stages;
+                properties[index] = authoredProperty;
+            }
+            return properties.ToArray();
         }
 
         private void Layout()

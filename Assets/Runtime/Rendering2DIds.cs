@@ -7,6 +7,9 @@ public static class Rendering2DIds
 {
     internal const int presentationOrder = 1000;
 
+    /// <summary>Gets the source-local path of the Material assigned to new Sprite renderers.</summary>
+    public const string defaultSpriteMaterialPath = "Materials/DefaultSprite.imaterial";
+
     /// <summary>Gets the render pipeline extension identity.</summary>
     public const string pipeline = "inno.rendering.2d.pipeline";
 
@@ -16,16 +19,7 @@ public static class Rendering2DIds
     /// <summary>Gets the automatic backbuffer request provider identity.</summary>
     public const string requestProvider = "inno.rendering.2d.request-provider";
 
-    /// <summary>Gets the Plugin-owned Sprite surface authoring target identity.</summary>
-    public const string spriteShaderTarget = "inno.rendering.2d.sprite-surface";
-
-    /// <summary>Gets the artist-facing Sprite surface output node identity.</summary>
-    public const string spriteSurfaceOutputNode = "inno.rendering.2d.sprite-surface-output";
-
-    /// <summary>Gets the per-instance Sprite texture convenience node identity.</summary>
-    public const string spriteTextureNode = "inno.rendering.2d.sprite-texture";
-
-    /// <summary>Gets the default Sprite Shader graph template identity.</summary>
+    /// <summary>Gets the complete explicit-stage Sprite Shader graph template identity.</summary>
     public const string spriteShaderTemplate = "inno.rendering.2d.sprite-template";
 
     /// <summary>Gets the Sprite Atlas asset creation template identity.</summary>
