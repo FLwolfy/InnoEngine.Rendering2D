@@ -48,7 +48,7 @@ if grep -Eq "BGFX FATAL|Unhandled exception|Teardown failure|unknown stable type
     exit 1
 fi
 
-"$dotnet_command" build "$project_root/Inno.EditorScripts.csproj" \
+"$dotnet_command" build "$source_root/Inno.EditorScripts.csproj" \
     -p:NuGetAudit=false \
     --disable-build-servers \
     -m:1 \

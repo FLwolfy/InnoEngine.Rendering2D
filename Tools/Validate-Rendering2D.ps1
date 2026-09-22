@@ -113,7 +113,7 @@ if ($validationText -match "BGFX FATAL|Unhandled exception|Teardown failure|Micr
 }
 
 Invoke-Checked "Rendering2D generated script build" {
-    dotnet build (Join-Path $projectRoot "Inno.EditorScripts.csproj") `
+    dotnet build (Join-Path $sourceRoot "Inno.EditorScripts.csproj") `
         -p:NuGetAudit=false `
         --disable-build-servers `
         -m:1 `

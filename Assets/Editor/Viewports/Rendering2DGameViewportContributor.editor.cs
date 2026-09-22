@@ -64,7 +64,6 @@ public sealed class Rendering2DGameViewportContributor : EditorViewportContribut
     {
         ArgumentNullException.ThrowIfNull(context);
         Rendering2DSceneScope scope = CreateScope(context);
-        m_viewportOptions.clearColorOverride = context.presentation.backgroundColor;
         Rendering2DViewportFrame frame = Rendering2DRenderer.CreateCameraStackFrame(
             scope,
             context.pixelWidth,

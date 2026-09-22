@@ -255,12 +255,16 @@ internal sealed class Rendering2DAssetDocumentProvider(
             draft = m_drafts[context.documentId] = CreateDraft(context);
 
         bool readOnly = AssetPath.Parse(context.assetPath).source != AssetSourceId.project;
-        ImGui.SeparatorText("Asset");
-        ImGui.Text(context.isDirty
-            ? "Unsaved changes · runtime content unchanged"
-            : "Saved source");
-        if (readOnly)
-            ImGui.Text("Installed Plugin asset · copy to the project to edit");
+        if (ImGuiWidget.SectionHeader(
+                "Asset",
+                "The source remains authoritative. Save publishes draft changes through the normal asset import path."))
+        {
+            ImGuiWidget.Hint(context.isDirty
+                ? "Unsaved changes · runtime content unchanged"
+                : "Saved source");
+            if (readOnly)
+                ImGuiWidget.Hint("Installed Plugin asset · copy to the project to edit");
+        }
 
         var edits = new InspectorDraftEdits(this, context, draft, readOnly);
         draft.DrawInspector(inspection, previews, edits, readOnly);
@@ -1280,21 +1284,33 @@ internal sealed class Rendering2DAssetDocumentProvider(
             IInspectionPropertyEditService edits,
             bool readOnly)
         {
-            ImGui.SeparatorText("Color and Tone");
-            Property("exposure", "Exposure", () => m_exposure, value => m_exposure = value);
-            Property("contrast", "Contrast", () => m_contrast, value => m_contrast = value, minimum: 0.0001);
-            Property("saturation", "Saturation", () => m_saturation, value => m_saturation = value, minimum: 0);
-            Property("toneMapping", "Tone Mapping", () => m_toneMapping, value => m_toneMapping = value);
+            if (ImGuiWidget.SectionHeader(
+                    "Color and Tone",
+                    "Exposure, contrast, saturation, and tone mapping shape the complete camera result."))
+            {
+                Property("exposure", "Exposure", () => m_exposure, value => m_exposure = value);
+                Property("contrast", "Contrast", () => m_contrast, value => m_contrast = value, minimum: 0.0001);
+                Property("saturation", "Saturation", () => m_saturation, value => m_saturation = value, minimum: 0);
+                Property("toneMapping", "Tone Mapping", () => m_toneMapping, value => m_toneMapping = value);
+            }
 
-            ImGui.SeparatorText("Bloom");
-            Property("bloomIntensity", "Intensity", () => m_bloomIntensity, value => m_bloomIntensity = value, minimum: 0);
-            Property("bloomThreshold", "Threshold", () => m_bloomThreshold, value => m_bloomThreshold = value, minimum: 0);
-            Property("bloomLevels", "Levels", () => m_bloomLevels, value => m_bloomLevels = value, minimum: 1, maximum: 8);
-            Property("bloomScatter", "Scatter", () => m_bloomScatter, value => m_bloomScatter = value, minimum: 0, maximum: 1);
+            if (ImGuiWidget.SectionHeader(
+                    "Bloom",
+                    "Bloom extracts bright pixels and spreads them through a bounded downsample pyramid."))
+            {
+                Property("bloomIntensity", "Intensity", () => m_bloomIntensity, value => m_bloomIntensity = value, minimum: 0);
+                Property("bloomThreshold", "Threshold", () => m_bloomThreshold, value => m_bloomThreshold = value, minimum: 0);
+                Property("bloomLevels", "Levels", () => m_bloomLevels, value => m_bloomLevels = value, minimum: 1, maximum: 8);
+                Property("bloomScatter", "Scatter", () => m_bloomScatter, value => m_bloomScatter = value, minimum: 0, maximum: 1);
+            }
 
-            ImGui.SeparatorText("Screen Effects");
-            Property("vignette", "Vignette", () => m_vignette, value => m_vignette = value, minimum: 0, maximum: 1);
-            Property("pixelation", "Pixelation", () => m_pixelation, value => m_pixelation = value, minimum: 1);
+            if (ImGuiWidget.SectionHeader(
+                    "Screen Effects",
+                    "These operations are evaluated after color and bloom composition."))
+            {
+                Property("vignette", "Vignette", () => m_vignette, value => m_vignette = value, minimum: 0, maximum: 1);
+                Property("pixelation", "Pixelation", () => m_pixelation, value => m_pixelation = value, minimum: 1);
+            }
 
             void Property<T>(
                 string path,
@@ -1414,33 +1430,49 @@ internal sealed class Rendering2DAssetDocumentProvider(
             IInspectionPropertyEditService edits,
             bool readOnly)
         {
-            ImGui.SeparatorText("Rendering");
-            Property("sprite", "Sprite", () => m_sprite, value => m_sprite = value);
-            Property("flipbookFrames", "Flipbook Frames", () => m_flipbookFrames, value => m_flipbookFrames = value ?? []);
-            Property("flipbookFramesPerSecond", "Flipbook FPS", () => m_flipbookFramesPerSecond, value => m_flipbookFramesPerSecond = value, minimum: 0);
-            Property<MaterialAsset?>("material", "Material", () => m_material, value => m_material = value);
-            Property("blendMode", "Blend Mode", () => m_blendMode, value => m_blendMode = value);
-            Property("sampling", "Sampling", () => m_sampling, value => m_sampling = value);
+            if (ImGuiWidget.SectionHeader(
+                    "Rendering",
+                    "Sprite, flipbook, Material, blending, and sampling define particle appearance."))
+            {
+                Property("sprite", "Sprite", () => m_sprite, value => m_sprite = value);
+                Property("flipbookFrames", "Flipbook Frames", () => m_flipbookFrames, value => m_flipbookFrames = value ?? []);
+                Property("flipbookFramesPerSecond", "Flipbook FPS", () => m_flipbookFramesPerSecond, value => m_flipbookFramesPerSecond = value, minimum: 0);
+                Property<MaterialAsset?>("material", "Material", () => m_material, value => m_material = value);
+                Property("blendMode", "Blend Mode", () => m_blendMode, value => m_blendMode = value);
+                Property("sampling", "Sampling", () => m_sampling, value => m_sampling = value);
+            }
 
-            ImGui.SeparatorText("Emitter");
-            Property("shape", "Shape", () => m_shape, value => m_shape = value);
-            Property("simulationSpace", "Simulation Space", () => m_simulationSpace, value => m_simulationSpace = value);
-            Property("maximumParticles", "Maximum Particles", () => m_maximumParticles, value => m_maximumParticles = value, minimum: 1);
-            Property("emissionRate", "Emission Rate", () => m_emissionRate, value => m_emissionRate = value, minimum: 0);
-            Property("shapeSize", "Shape Size", () => m_shapeSize, value => m_shapeSize = value);
-            Property("coneAngle", "Cone Angle", () => m_coneAngle, value => m_coneAngle = value, minimum: 0, maximum: 360);
+            if (ImGuiWidget.SectionHeader(
+                    "Emitter",
+                    "Emitter shape, capacity, rate, and simulation space define where particles begin."))
+            {
+                Property("shape", "Shape", () => m_shape, value => m_shape = value);
+                Property("simulationSpace", "Simulation Space", () => m_simulationSpace, value => m_simulationSpace = value);
+                Property("maximumParticles", "Maximum Particles", () => m_maximumParticles, value => m_maximumParticles = value, minimum: 1);
+                Property("emissionRate", "Emission Rate", () => m_emissionRate, value => m_emissionRate = value, minimum: 0);
+                Property("shapeSize", "Shape Size", () => m_shapeSize, value => m_shapeSize = value);
+                Property("coneAngle", "Cone Angle", () => m_coneAngle, value => m_coneAngle = value, minimum: 0, maximum: 360);
+            }
 
-            ImGui.SeparatorText("Lifetime and Motion");
-            Property("minimumLifetime", "Minimum Lifetime", () => m_minimumLifetime, value => m_minimumLifetime = value, minimum: 0.0001);
-            Property("maximumLifetime", "Maximum Lifetime", () => m_maximumLifetime, value => m_maximumLifetime = value, minimum: 0.0001);
-            Property("minimumSpeed", "Minimum Speed", () => m_minimumSpeed, value => m_minimumSpeed = value);
-            Property("maximumSpeed", "Maximum Speed", () => m_maximumSpeed, value => m_maximumSpeed = value);
-            Property("gravity", "Gravity", () => m_gravity, value => m_gravity = value);
-            Property("noiseStrength", "Noise Strength", () => m_noiseStrength, value => m_noiseStrength = value);
+            if (ImGuiWidget.SectionHeader(
+                    "Lifetime and Motion",
+                    "Lifetime, speed, gravity, and noise define deterministic particle movement."))
+            {
+                Property("minimumLifetime", "Minimum Lifetime", () => m_minimumLifetime, value => m_minimumLifetime = value, minimum: 0.0001);
+                Property("maximumLifetime", "Maximum Lifetime", () => m_maximumLifetime, value => m_maximumLifetime = value, minimum: 0.0001);
+                Property("minimumSpeed", "Minimum Speed", () => m_minimumSpeed, value => m_minimumSpeed = value);
+                Property("maximumSpeed", "Maximum Speed", () => m_maximumSpeed, value => m_maximumSpeed = value);
+                Property("gravity", "Gravity", () => m_gravity, value => m_gravity = value);
+                Property("noiseStrength", "Noise Strength", () => m_noiseStrength, value => m_noiseStrength = value);
+            }
 
-            ImGui.SeparatorText("Over Lifetime");
-            Property("sizeOverLifetime", "Size", () => m_sizeOverLifetime, value => m_sizeOverLifetime = value);
-            Property("colorOverLifetime", "Color", () => m_colorOverLifetime, value => m_colorOverLifetime = value);
+            if (ImGuiWidget.SectionHeader(
+                    "Over Lifetime",
+                    "Curves and gradients evolve particle size and color over normalized lifetime."))
+            {
+                Property("sizeOverLifetime", "Size", () => m_sizeOverLifetime, value => m_sizeOverLifetime = value);
+                Property("colorOverLifetime", "Color", () => m_colorOverLifetime, value => m_colorOverLifetime = value);
+            }
 
             void Property<T>(
                 string path,
