@@ -256,7 +256,7 @@ public sealed class SpriteShaderTemplate : ShaderGraphTemplate
             createPath = "Rendering 2D/Sprite",
             createOrder = 110,
             kind = ShaderGraphNodeKind.Function,
-            effect = ShaderGraphNodeEffect.Pure,
+            effect = ShaderGraphNodeEffect.SideEffect,
             inputs =
             [
                 Port("color", "float4"),

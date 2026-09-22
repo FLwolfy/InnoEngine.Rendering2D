@@ -29,6 +29,15 @@ public sealed class SpritePreviewPipeline : RenderPipeline
     /// <summary>Gets the frame-only domain preview input channel.</summary>
     public static RenderDataChannelId channel => new(pipelineId);
 
+    private static readonly RenderBindingId s_materialBinding = new("u_spriteMaterial");
+    private static readonly RenderBindingId s_lightSamplingBinding = new("u_lightSampling");
+    private static readonly RenderBindingId s_spriteTextureBinding = new("s_spriteTexture");
+    private static readonly RenderBindingId s_normalTextureBinding = new("s_normalTexture");
+    private static readonly RenderBindingId s_emissionTextureBinding = new("s_emissionTexture");
+    private static readonly RenderBindingId[] s_lightColorBindings =
+        [new("s_lightColor0"), new("s_lightColor1"), new("s_lightColor2"), new("s_lightColor3")];
+    private static readonly RenderBindingId[] s_lightDirectionBindings =
+        [new("s_lightDirection0"), new("s_lightDirection1"), new("s_lightDirection2"), new("s_lightDirection3")];
     private readonly RenderVertexLayout m_vertices = new([new(RenderVertexSemantic.Position, RenderVertexFormat.Float2)]);
     private readonly RenderVertexLayout m_instances = new([
         new(RenderVertexSemantic.TextureCoordinate3, RenderVertexFormat.Float4), new(RenderVertexSemantic.TextureCoordinate4, RenderVertexFormat.Float4),
@@ -75,20 +84,34 @@ public sealed class SpritePreviewPipeline : RenderPipeline
     {
         commands.SetViewport(0, 0, data.viewport.width, data.viewport.height);
         data.material.Bind(commands);
-        commands.SetUniform(new("u_spriteMaterial"), data.parameters);
-        commands.SetUniform(new("u_lightSampling"), data.zero);
-        commands.BindTexture(new("s_spriteTexture"), data.white, new());
-        commands.BindTexture(new("s_normalTexture"), data.normal, new());
-        commands.BindTexture(new("s_emissionTexture"), data.black, new());
+        SetUniform(data.material, commands, s_materialBinding, data.parameters);
+        SetUniform(data.material, commands, s_lightSamplingBinding, data.zero);
+        BindTexture(data.material, commands, s_spriteTextureBinding, data.white);
+        BindTexture(data.material, commands, s_normalTextureBinding, data.normal);
+        BindTexture(data.material, commands, s_emissionTextureBinding, data.black);
         for (int index = 0; index < 4; index++)
         {
-            commands.BindTexture(new("s_lightColor" + index), data.white, new());
-            commands.BindTexture(new("s_lightDirection" + index), data.black, new());
+            BindTexture(data.material, commands, s_lightColorBindings[index], data.white);
+            BindTexture(data.material, commands, s_lightDirectionBindings[index], data.black);
         }
         commands.BindVertexBuffer(data.vertices);
         commands.BindIndexBuffer(data.indices);
         commands.BindInstanceBuffer(data.instances, 0, 1);
         commands.DrawIndexed(6);
+    }
+
+    private static void SetUniform(RenderMaterialPass material, RenderCommandEncoder commands,
+        RenderBindingId binding, ReadOnlySpan<byte> value)
+    {
+        if (material.UsesBinding(binding, RenderShaderBindingKind.Uniform))
+            commands.SetUniform(binding, value);
+    }
+
+    private static void BindTexture(RenderMaterialPass material, RenderCommandEncoder commands,
+        RenderBindingId binding, PersistentTextureHandle texture)
+    {
+        if (material.UsesBinding(binding, RenderShaderBindingKind.Texture))
+            commands.BindTexture(binding, texture, new());
     }
 
     private static byte[] Floats(float[] values)

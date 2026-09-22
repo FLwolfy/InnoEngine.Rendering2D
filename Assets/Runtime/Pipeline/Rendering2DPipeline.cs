@@ -1386,17 +1386,18 @@ public sealed class Rendering2DPipeline : RenderPipeline
         commands.SetViewport(viewport.x, viewport.y, viewport.width, viewport.height);
         data.material.Bind(commands);
         commands.SetStencil(RenderStencilState.disabled);
-        commands.SetUniform(new RenderBindingId("u_blitGeometry"), data.geometry);
-        commands.SetUniform(new RenderBindingId("u_texelSize"), data.texelSize);
-        commands.BindTexture(new RenderBindingId("s_source"), data.sceneColor, RenderSamplerState.linearClamp);
+        SetUniform(data.material, commands, new("u_blitGeometry"), data.geometry);
+        SetUniform(data.material, commands, new("u_texelSize"), data.texelSize);
+        BindTexture(data.material, commands, new("s_source"), data.sceneColor, RenderSamplerState.linearClamp);
         if (data.kind is CompositeKind.Upsample or CompositeKind.Final)
-            commands.BindTexture(new RenderBindingId("s_auxiliary"), data.effectTexture.isValid ? data.effectTexture : data.sceneColor, RenderSamplerState.linearClamp);
+            BindTexture(data.material, commands, new("s_auxiliary"),
+                data.effectTexture.isValid ? data.effectTexture : data.sceneColor, RenderSamplerState.linearClamp);
         if (data.kind is CompositeKind.Prefilter or CompositeKind.Upsample)
-            commands.SetUniform(new RenderBindingId("u_bloom"), data.bloom);
+            SetUniform(data.material, commands, new("u_bloom"), data.bloom);
         if (data.kind == CompositeKind.Final)
         {
-            commands.SetUniform(new RenderBindingId("u_colorAdjustments"), data.colorAdjustments);
-            commands.SetUniform(new RenderBindingId("u_composite"), data.options);
+            SetUniform(data.material, commands, new("u_colorAdjustments"), data.colorAdjustments);
+            SetUniform(data.material, commands, new("u_composite"), data.options);
         }
         commands.BindVertexBuffer(data.sharedVertices);
         commands.BindIndexBuffer(data.sharedIndices);
@@ -1424,7 +1425,7 @@ public sealed class Rendering2DPipeline : RenderPipeline
         LightingFrameResources lighting,
         RenderCommandEncoder commands)
     {
-        BindLighting(lighting, batch.lightingLayer, batch.lightBlendStyles, state, commands);
+        BindLighting(batch.material, lighting, batch.lightingLayer, batch.lightBlendStyles, state, commands);
         BindGeometry(batch, sharedVertices, sharedIndices, state, commands);
     }
 
@@ -1437,15 +1438,15 @@ public sealed class Rendering2DPipeline : RenderPipeline
     {
         if (batch.bindingKind == BatchBindingKind.Sprite)
         {
-            commands.SetUniform(state.materialEffectBinding, batch.materialEffect);
-            commands.BindTexture(state.textureBinding, batch.texture, batch.sampler);
-            commands.BindTexture(state.normalTextureBinding, batch.normalMap, batch.sampler);
-            commands.BindTexture(state.emissionTextureBinding, batch.emissionMap, batch.sampler);
+            SetUniform(batch.material, commands, state.materialEffectBinding, batch.materialEffect);
+            BindTexture(batch.material, commands, state.textureBinding, batch.texture, batch.sampler);
+            BindTexture(batch.material, commands, state.normalTextureBinding, batch.normalMap, batch.sampler);
+            BindTexture(batch.material, commands, state.emissionTextureBinding, batch.emissionMap, batch.sampler);
         }
         else if (batch.bindingKind == BatchBindingKind.Light)
         {
-            commands.SetUniform(new RenderBindingId("u_lightParameters"), batch.materialEffect);
-            commands.BindTexture(new RenderBindingId("s_cookie"), batch.texture, batch.sampler);
+            SetUniform(batch.material, commands, new("u_lightParameters"), batch.materialEffect);
+            BindTexture(batch.material, commands, new("s_cookie"), batch.texture, batch.sampler);
         }
         commands.BindVertexBuffer(sharedVertices);
         commands.BindIndexBuffer(sharedIndices);
@@ -1457,6 +1458,7 @@ public sealed class Rendering2DPipeline : RenderPipeline
     }
 
     private static void BindLighting(
+        RenderMaterialPass material,
         LightingFrameResources lighting,
         int layer,
         byte lightBlendStyles,
@@ -1472,20 +1474,41 @@ public sealed class Rendering2DPipeline : RenderPipeline
             int slot = Math.Clamp(layer, 0, 31) * 4 + style;
             if (!lighting.colors[slot].isValid)
                 continue;
-            commands.BindTexture(
+            BindTexture(material, commands,
                 state.lightColorBindings[style],
                 lighting.colors[slot],
                 RenderSamplerState.linearClamp);
-            commands.BindTexture(
+            BindTexture(material, commands,
                 state.lightDirectionBindings[style],
                 lighting.directions[slot],
                 RenderSamplerState.linearClamp);
         }
-        commands.SetUniform(
+        SetUniform(material, commands,
             state.lightSamplingBinding,
             lighting.flipVerticalUv
                 ? state.lightSamplingFlipped
                 : state.lightSamplingNormal);
+    }
+
+    private static void SetUniform(RenderMaterialPass material, RenderCommandEncoder commands,
+        RenderBindingId binding, ReadOnlySpan<byte> value)
+    {
+        if (material.UsesBinding(binding, RenderShaderBindingKind.Uniform))
+            commands.SetUniform(binding, value);
+    }
+
+    private static void BindTexture(RenderMaterialPass material, RenderCommandEncoder commands,
+        RenderBindingId binding, RenderTextureHandle texture, RenderSamplerState sampler)
+    {
+        if (material.UsesBinding(binding, RenderShaderBindingKind.Texture))
+            commands.BindTexture(binding, texture, sampler);
+    }
+
+    private static void BindTexture(RenderMaterialPass material, RenderCommandEncoder commands,
+        RenderBindingId binding, PersistentTextureHandle texture, RenderSamplerState sampler)
+    {
+        if (material.UsesBinding(binding, RenderShaderBindingKind.Texture))
+            commands.BindTexture(binding, texture, sampler);
     }
 
     private static byte[] CreateStencilClearInstanceBytes(InnoEngine.Mathematics.Rect bounds)
