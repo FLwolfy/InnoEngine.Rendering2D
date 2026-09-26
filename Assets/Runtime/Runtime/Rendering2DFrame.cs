@@ -32,6 +32,7 @@ internal sealed class Rendering2DFrame
     internal required Rendering2DLight[] lights { get; init; }
     internal required Rendering2DShadowCaster[] shadowCasters { get; init; }
     internal required Rendering2DDrawBatch[] batches { get; init; }
+    internal required Rendering2DSceneDraw[] sceneDraws { get; init; }
     internal required Rendering2DDrawBatch[] maskBatches { get; init; }
     internal required bool masksUnavailable { get; init; }
     internal required Rendering2DPickRecord[] pickRecords { get; init; }
@@ -86,9 +87,15 @@ internal sealed record Rendering2DDrawBatch(
     int lightingLayer,
     byte lightBlendStyles);
 
+internal readonly record struct Rendering2DSceneDraw(
+    Rendering2DDrawBatch? batch,
+    ViewContentItem? content,
+    IReadOnlyList<Rendering2DQuad>? pointerOccluders = null);
+
 internal sealed record Rendering2DPickRecord(GameObject gameObject, Rect bounds, Rendering2DSortKey sortKey);
 
-internal readonly record struct Rendering2DSortKey(int domain, int layer, int order, float depth, int sequence)
+internal readonly record struct Rendering2DSortKey(int domain, int layer, int order, float depth, int sequence,
+    Guid groupId = default, int childLayer = 0, int childOrder = 0)
     : IComparable<Rendering2DSortKey>
 {
     public int CompareTo(Rendering2DSortKey other)
@@ -100,6 +107,15 @@ internal readonly record struct Rendering2DSortKey(int domain, int layer, int or
         if (result != 0)
             return result;
         result = order.CompareTo(other.order);
+        if (result != 0)
+            return result;
+        result = groupId.CompareTo(other.groupId);
+        if (result != 0)
+            return result;
+        result = childLayer.CompareTo(other.childLayer);
+        if (result != 0)
+            return result;
+        result = childOrder.CompareTo(other.childOrder);
         if (result != 0)
             return result;
         result = depth.CompareTo(other.depth);
@@ -471,6 +487,21 @@ internal static class Rendering2DFrameCollector
             pixelWidth,
             pixelHeight,
             settings.defaultPixelsPerUnit);
+        ViewContentItem[] externalItems = options is { viewContent: not null, content: not null }
+            ? options.viewContent.Collect(new ViewContentContext(
+                options.content,
+                options.sessionId,
+                new RenderView(
+                    $"2D/{camera.identity.persistentId:D}",
+                    new RenderViewport(0, 0, pixelWidth, pixelHeight),
+                    cameraState.view,
+                    cameraState.projection,
+                    camera.cullingMask.value),
+                options.frameIndex,
+                options.deltaTime,
+                options.input,
+                options.views)).ToArray()
+            : [];
         Rendering2DLight[] lights = CollectLights(scope, camera, cameraState.bounds);
         Rendering2DShadowCaster[] shadowCasters = CollectShadowCasters(scope, camera, cameraState.bounds);
         List<MaskSnapshot> masks = CollectMasks(
@@ -554,6 +585,9 @@ internal static class Rendering2DFrameCollector
             diagnostics.Add($"2D request reached the configured {settings.maximumQuadsPerFrame} quad limit.");
 
         quads.Sort(static (left, right) => left.sortKey.CompareTo(right.sortKey));
+        (Rendering2DDrawBatch[] batches, Rendering2DSceneDraw[] sceneDraws) =
+            BuildSceneDraws(quads, externalItems, settings, camera,
+                Math.Max(1, settings.maximumQuadsPerBatch));
         return new Rendering2DFrame
         {
             camera = camera,
@@ -574,7 +608,8 @@ internal static class Rendering2DFrameCollector
             postProcess = CapturePostProcess(camera.postProcess),
             lights = lights,
             shadowCasters = shadowCasters,
-            batches = BuildBatches(quads, Math.Max(1, settings.maximumQuadsPerBatch)),
+            batches = batches,
+            sceneDraws = sceneDraws,
             maskBatches = BuildMaskBatches(masks),
             masksUnavailable = masksUnavailable,
             pickRecords = BuildPickRecords(quads),
@@ -612,6 +647,7 @@ internal static class Rendering2DFrameCollector
             lights = [],
             shadowCasters = [],
             batches = [],
+            sceneDraws = [],
             maskBatches = [],
             masksUnavailable = false,
             pickRecords = [],
@@ -637,6 +673,15 @@ internal static class Rendering2DFrameCollector
             float.IsFinite(profile.bloomScatter) ? Math.Clamp(profile.bloomScatter, 0f, 1f) : 0.7f,
             float.IsFinite(profile.vignette) ? Math.Clamp(profile.vignette, 0f, 1f) : 0f,
             Math.Max(1, profile.pixelation));
+    }
+
+    internal static RenderView DescribeView(Camera2D camera, int width, int height)
+    {
+        CameraState state = CreateCameraState(camera, width, height,
+            GetSettings().defaultPixelsPerUnit);
+        return new RenderView($"2D/{camera.identity.persistentId:D}",
+            new RenderViewport(0, 0, width, height), state.view, state.projection,
+            camera.cullingMask.value);
     }
 
     private static CameraState CreateCameraState(
@@ -1177,12 +1222,7 @@ internal static class Rendering2DFrameCollector
         SpriteRenderer2D sprite,
         Rendering2DProjectSettings settings,
         int sequence)
-        => new(
-            1,
-            settings.GetSortingLayerOrder(sprite.sortingLayer),
-            sprite.orderInLayer,
-            owner.transform.worldPosition.z,
-            sequence);
+        => CreateGroupedSortKey(owner, settings, sprite.sortingLayer, sprite.orderInLayer, sequence);
 
     private static void AddSpriteGeometry(
         GameObject owner,
@@ -1285,12 +1325,8 @@ internal static class Rendering2DFrameCollector
                     continue;
                 }
                 Color tint = Multiply(Multiply(Multiply(renderer.color, layer.color), tile.color), cell.color);
-                Rendering2DSortKey sortKey = new(
-                    1,
-                    settings.GetSortingLayerOrder(renderer.sortingLayer),
-                    renderer.orderInLayer + layer.order,
-                    owner.transform.worldPosition.z,
-                    sequence++);
+                Rendering2DSortKey sortKey = CreateGroupedSortKey(owner, settings,
+                    renderer.sortingLayer, renderer.orderInLayer + layer.order, sequence++);
                 int before = output.Count;
                 AddQuad(
                     owner,
@@ -1459,12 +1495,8 @@ internal static class Rendering2DFrameCollector
             Rect bounds = new(center.x - size * 0.5f, center.y - size * 0.5f, size, size);
             if (!bounds.Overlaps(cameraBounds))
                 continue;
-            Rendering2DSortKey sortKey = new(
-                1,
-                settings.GetSortingLayerOrder(system.sortingLayer),
-                system.orderInLayer,
-                owner.transform.worldPosition.z,
-                sequence++);
+            Rendering2DSortKey sortKey = CreateGroupedSortKey(owner, settings,
+                system.sortingLayer, system.orderInLayer, sequence++);
             AddParticleQuad(owner, center, size, particle.rotation, source, material, effect, particle.color, sortKey, output);
         }
     }
@@ -1894,12 +1926,94 @@ internal static class Rendering2DFrameCollector
     private static Color Multiply(Color left, Color right)
         => new(left.r * right.r, left.g * right.g, left.b * right.b, left.a * right.a);
 
-    private static Rendering2DDrawBatch[] BuildBatches(
+    private static (Rendering2DDrawBatch[] batches, Rendering2DSceneDraw[] draws) BuildSceneDraws(
         IReadOnlyList<Rendering2DQuad> quads,
+        IReadOnlyList<ViewContentItem> externalItems,
+        Rendering2DProjectSettings settings,
+        Camera2D camera,
         int maximumQuadsPerBatch)
     {
-        var result = new List<Rendering2DDrawBatch>();
+        var candidates = new List<SceneDrawCandidate>(quads.Count + externalItems.Count);
+        foreach (Rendering2DQuad quad in quads)
+            candidates.Add(new SceneDrawCandidate(quad.sortKey, quad, null));
+        int sequence = quads.Count;
+        foreach (ViewContentItem item in externalItems)
+        {
+            GameObject? owner = item.owner.Resolve<GameObject>();
+            if (owner is null || !owner.activeInHierarchy || !camera.cullingMask.Contains(owner.layer))
+                continue;
+            candidates.Add(new SceneDrawCandidate(
+                CreateGroupedSortKey(owner, settings, "default", 0, sequence++),
+                null,
+                item));
+        }
+        candidates.Sort(static (left, right) => left.key.CompareTo(right.key));
+        var batches = new List<Rendering2DDrawBatch>();
+        var draws = new List<Rendering2DSceneDraw>();
+        var run = new List<Rendering2DQuad>();
         var persistentSegments = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (SceneDrawCandidate candidate in candidates)
+        {
+            if (candidate.quad is Rendering2DQuad quad)
+            {
+                run.Add(quad);
+                continue;
+            }
+            FlushRun();
+            if (candidate.content is ViewContentItem content)
+                draws.Add(new Rendering2DSceneDraw(null, content));
+        }
+        FlushRun();
+        return (batches.ToArray(), draws.ToArray());
+
+        void FlushRun()
+        {
+            if (run.Count == 0)
+                return;
+            Rendering2DQuad[] pointerOccluders = run.Where(static quad =>
+                quad.owner is GameObject owner &&
+                owner.TryGetComponent(out SpriteRenderer2D? sprite) &&
+                sprite is { isActiveAndEnabled: true, pointerPassThrough: false } &&
+                (quad.bottomLeft.color >> 24) != 0).ToArray();
+            foreach (Rendering2DDrawBatch batch in BuildBatches(run, maximumQuadsPerBatch, persistentSegments))
+            {
+                batches.Add(batch);
+                draws.Add(new Rendering2DSceneDraw(batch, null, pointerOccluders));
+            }
+            run.Clear();
+        }
+    }
+
+    private readonly record struct SceneDrawCandidate(
+        Rendering2DSortKey key,
+        Rendering2DQuad? quad,
+        ViewContentItem? content);
+
+    private static Rendering2DSortKey CreateGroupedSortKey(GameObject owner,
+        Rendering2DProjectSettings settings, string layer, int order, int sequence)
+    {
+        for (Transform? cursor = owner.transform; cursor is not null; cursor = cursor.parent)
+        {
+            if (!cursor.gameObject.TryGetComponent(out SortingGroup2D? group)
+                || group is not { isActiveAndEnabled: true })
+                continue;
+            return new Rendering2DSortKey(1,
+                settings.GetSortingLayerOrder(group.sortingLayer), group.orderInLayer,
+                cursor.worldPosition.z, sequence,
+                cursor.gameObject.identity.persistentId,
+                settings.GetSortingLayerOrder(layer), order);
+        }
+        return new Rendering2DSortKey(1, settings.GetSortingLayerOrder(layer), order,
+            owner.transform.worldPosition.z, sequence);
+    }
+
+    private static Rendering2DDrawBatch[] BuildBatches(
+        IReadOnlyList<Rendering2DQuad> quads,
+        int maximumQuadsPerBatch,
+        Dictionary<string, int>? persistentSegments = null)
+    {
+        var result = new List<Rendering2DDrawBatch>();
+        persistentSegments ??= new Dictionary<string, int>(StringComparer.Ordinal);
         int start = 0;
         while (start < quads.Count)
         {

@@ -16,6 +16,25 @@ namespace Inno.Rendering2D;
 /// <summary>Configures host presentation helpers for one explicitly collected 2D viewport.</summary>
 public sealed class Rendering2DViewportOptions
 {
+    /// <summary>Gets or sets the stable host output session identity.</summary>
+    public string sessionId { get; set; } = "primary";
+
+    /// <summary>Gets or sets the model-independent content collector for this output.</summary>
+    public IViewContentCollector? viewContent { get; set; }
+    /// <summary>Gets or sets the sibling views in this camera stack.</summary>
+    public IReadOnlyList<RenderView>? views { get; set; }
+    /// <summary>Gets or sets viewport-local pointer and keyboard input.</summary>
+    public RenderOutputInput input { get; set; } = RenderOutputInput.empty;
+
+    /// <summary>Gets or sets the frame-scoped roots passed to world-content sources.</summary>
+    public ContentReadScope? content { get; set; }
+
+    /// <summary>Gets or sets the shared output frame index.</summary>
+    public ulong frameIndex { get; set; }
+
+    /// <summary>Gets or sets elapsed frame time in seconds.</summary>
+    public float deltaTime { get; set; }
+
     /// <summary>Gets or sets an optional clear-color override for this viewport only.</summary>
     public Color? clearColorOverride { get; set; }
 
@@ -343,10 +362,12 @@ public static class Rendering2DRenderer
             if (scope.stackFrame is not null && scope.stackFrameFingerprint == stackFingerprint)
                 cachedFrame = scope.stackFrame;
         }
-        if (cachedFrame is not null)
+        if (cachedFrame is not null && options?.viewContent is null)
             return cachedFrame;
 
         Rendering2DFrame[] frames = new Rendering2DFrame[plan.cameras.Length];
+        RenderView[] views = plan.cameras.Select(camera =>
+            Rendering2DFrameCollector.DescribeView(camera, pixelWidth, pixelHeight)).ToArray();
         string[] firstFrameDiagnostics = CombineDiagnostics(
             plan.diagnostics,
             options?.additionalDiagnostics);
@@ -369,9 +390,17 @@ public static class Rendering2DRenderer
                         : null,
                     backbufferOnly = options?.backbufferOnly ?? false,
                     drawGrid = options?.drawGrid ?? false,
-                    drawAxes = options?.drawAxes ?? false
+                    drawAxes = options?.drawAxes ?? false,
+                    viewContent = options?.viewContent,
+                    views = views,
+                    input = options?.input ?? RenderOutputInput.empty,
+                    content = options?.content,
+                    sessionId = options?.sessionId ?? "primary",
+                    frameIndex = options?.frameIndex ?? 0,
+                    deltaTime = options?.deltaTime ?? 0f
                 });
         }
+        RouteInput(frames, options);
         var result = new Rendering2DViewportFrame(frames);
         lock (scope.cacheGate)
         {
@@ -407,14 +436,144 @@ public static class Rendering2DRenderer
         ViewportFrameCache cache = S_VIEWPORT_FRAMES.GetValue(camera, static _ => new ViewportFrameCache());
         lock (cache)
         {
-            if (cache.frame is not null && cache.fingerprint == fingerprint)
+            if (cache.frame is not null && cache.fingerprint == fingerprint && options?.viewContent is null)
                 return cache.frame;
-            var frame = new Rendering2DViewportFrame(
-                Rendering2DFrameCollector.Collect(scope, camera, pixelWidth, pixelHeight, options));
+            Rendering2DFrame collected = Rendering2DFrameCollector.Collect(
+                scope, camera, pixelWidth, pixelHeight, options);
+            RouteInput([collected], options);
+            var frame = new Rendering2DViewportFrame(collected);
             cache.fingerprint = fingerprint;
             cache.frame = frame;
             return frame;
         }
+    }
+
+    private static void RouteInput(IReadOnlyList<Rendering2DFrame> frames,
+        Rendering2DViewportOptions? options)
+    {
+        var ordered = new List<(IViewPointerTarget? pointer,
+            IReadOnlyList<Rendering2DQuad>? occluders, RenderView view)>();
+        for (int frameIndex = frames.Count - 1; frameIndex >= 0; frameIndex--)
+        {
+            Rendering2DFrame frame = frames[frameIndex];
+            var view = new RenderView($"2D/{frame.camera.identity.persistentId:D}",
+                new RenderViewport(0, 0, frame.pixelWidth, frame.pixelHeight),
+                frame.viewTransform, frame.projectionTransform, frame.camera.cullingMask.value);
+            for (int drawIndex = frame.sceneDraws.Length - 1; drawIndex >= 0; drawIndex--)
+            {
+                Rendering2DSceneDraw draw = frame.sceneDraws[drawIndex];
+                IViewPointerTarget? pointer = draw.content?.pointerTarget;
+                if (pointer is not null || draw.pointerOccluders is { Count: > 0 })
+                    ordered.Add((pointer, draw.pointerOccluders, view));
+            }
+        }
+        RenderOutputInput input = options?.input ?? RenderOutputInput.empty;
+        if (ordered.Count == 0)
+            return;
+        if (!input.interactionEnabled)
+        {
+            var suspended = new HashSet<IViewPointerTarget>(ReferenceEqualityComparer.Instance);
+            foreach ((IViewPointerTarget? pointer, _, _) in ordered)
+            {
+                if (pointer is null || !suspended.Add(pointer))
+                    continue;
+                pointer.SetKeyboardFocus(false);
+                pointer.Advance(RenderOutputInput.suspended, default, options?.frameIndex ?? 0);
+            }
+            return;
+        }
+        IViewPointerTarget? target = null;
+        Vector2 targetPosition = default;
+        foreach ((IViewPointerTarget? pointer, _, RenderView view) in ordered)
+        {
+            if (pointer is null || !pointer.hasPointerCapture)
+                continue;
+            target = pointer;
+            _ = pointer.TryHit(view, input, out targetPosition);
+            break;
+        }
+        if (target is null && input.pointerInside)
+        {
+            foreach ((IViewPointerTarget? pointer, IReadOnlyList<Rendering2DQuad>? occluders,
+                         RenderView view) in ordered)
+            {
+                if (pointer is not null && pointer.TryHit(view, input, out targetPosition))
+                {
+                    target = pointer;
+                    break;
+                }
+                if (occluders is not null && occluders.Any(quad => SpriteCoversPointer(quad, view, input)))
+                    break;
+            }
+        }
+
+        var seen = new HashSet<IViewPointerTarget>(ReferenceEqualityComparer.Instance);
+        var unique = new List<IViewPointerTarget>();
+        foreach ((IViewPointerTarget? pointer, _, _) in ordered)
+        {
+            if (pointer is not null && seen.Add(pointer))
+                unique.Add(pointer);
+        }
+        if (input.buttonsPressed.Count > 0)
+        {
+            foreach (IViewPointerTarget pointer in unique)
+                pointer.SetKeyboardFocus(ReferenceEquals(pointer, target));
+        }
+        IViewPointerTarget? keyboardTarget = ordered.Select(static entry => entry.pointer)
+            .FirstOrDefault(static pointer => pointer is { hasKeyboardFocus: true });
+        foreach (IViewPointerTarget pointer in unique)
+        {
+            bool selectedForPointer = ReferenceEquals(pointer, target);
+            bool selectedForKeyboard = ReferenceEquals(pointer, keyboardTarget);
+            RenderOutputInput routed = selectedForPointer && selectedForKeyboard ? input
+                : selectedForPointer ? new RenderOutputInput(input.pointerPosition,
+                    input.pointerInside, input.scrollDelta, input.modifiers,
+                    [], [], input.buttonsPressed, input.buttonsReleased, [])
+                : selectedForKeyboard ? new RenderOutputInput(default, false, default,
+                    input.modifiers, input.keysPressed, input.keysReleased, [], [], input.textInput)
+                : RenderOutputInput.empty;
+            pointer.Advance(routed, selectedForPointer ? targetPosition : default,
+                options?.frameIndex ?? 0);
+        }
+    }
+
+    private static bool SpriteCoversPointer(Rendering2DQuad quad, RenderView view,
+        RenderOutputInput input)
+    {
+        Matrix worldToClip = view.projectionMatrix * view.viewMatrix;
+        if (!TryProject(quad.bottomLeft, out Vector2 a)
+            || !TryProject(quad.bottomRight, out Vector2 b)
+            || !TryProject(quad.topRight, out Vector2 c)
+            || !TryProject(quad.topLeft, out Vector2 d))
+            return false;
+        Vector2 point = input.pointerPosition;
+        return InTriangle(a, b, c, point) || InTriangle(a, c, d, point);
+
+        bool TryProject(Rendering2DVertex vertex, out Vector2 projected)
+        {
+            Vector4 clip = Vector4.Transform(new Vector4(vertex.x, vertex.y, vertex.z, 1f), worldToClip);
+            if (clip.w <= 0.000001f)
+            {
+                projected = default;
+                return false;
+            }
+            projected = new Vector2(
+                (clip.x / clip.w + 1f) * view.viewport.width * 0.5f,
+                (1f - clip.y / clip.w) * view.viewport.height * 0.5f);
+            return true;
+        }
+
+        static bool InTriangle(Vector2 a, Vector2 b, Vector2 c, Vector2 point)
+        {
+            float ab = Cross(a, b, point);
+            float bc = Cross(b, c, point);
+            float ca = Cross(c, a, point);
+            return (ab >= 0f && bc >= 0f && ca >= 0f)
+                || (ab <= 0f && bc <= 0f && ca <= 0f);
+        }
+
+        static float Cross(Vector2 a, Vector2 b, Vector2 point)
+            => (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
     }
 
     /// <summary>Creates one explicit backbuffer or offscreen 2D request.</summary>
@@ -822,52 +981,46 @@ public readonly struct Rendering2DFrameStatistics
 }
 
 /// <summary>
-/// Submits the enabled backbuffer 2D camera stack from the host's explicit frame content scope.
+/// Builds the 2D camera stack for a host output session.
 /// </summary>
-[RenderRequestProviderExtension(Rendering2DIds.requestProvider)]
-public sealed class Rendering2DRequestProvider : RenderRequestProvider
+[RenderModelExtension(Rendering2DIds.renderModel)]
+public sealed class Rendering2DModel : IRenderModel
 {
     private readonly Rendering2DSceneScopeCache m_scopeCache = new();
     private readonly Rendering2DViewportOptions m_options = new() { backbufferOnly = true };
     private IReadOnlyList<string>? m_lastDiagnostics;
-    private Rendering2DViewportFrame? m_lastFrame;
-    private RenderViewport m_lastViewport;
-    private int m_lastPriority;
-    private RenderRequest? m_lastRequest;
+    /// <inheritdoc />
+    public bool CanRender(RenderOutputSession session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        return Rendering2DRenderer.HasEnabledBaseCamera(
+            m_scopeCache.Get(session.content), backbufferOnly: true);
+    }
 
     /// <inheritdoc />
-    public override void Submit(RenderRequestProviderContext context)
+    public RenderModelOutput Build(RenderOutputSession session)
     {
-        ArgumentNullException.ThrowIfNull(context);
-        Rendering2DSceneScope scope = m_scopeCache.Get(context.content);
-        if (!Rendering2DRenderer.HasEnabledBaseCamera(scope, backbufferOnly: true))
-            return;
-        RenderViewport viewport = context.primaryPresentationViewport;
+        ArgumentNullException.ThrowIfNull(session);
+        Rendering2DSceneScope scope = m_scopeCache.Get(session.content);
+        m_options.viewContent = session.viewContent;
+        m_options.input = session.input;
+        m_options.content = session.content;
+        m_options.frameIndex = session.frameIndex;
+        m_options.deltaTime = session.deltaTime;
+        m_options.sessionId = session.id;
+        RenderViewport viewport = session.viewport;
         Rendering2DViewportFrame frame = Rendering2DRenderer.CreateCameraStackFrame(
             scope,
             viewport.width,
             viewport.height,
             m_options);
         PublishPlanDiagnostics(frame.diagnostics);
-        int priority = SaturatingPriority(frame.primaryCameraPriority);
-        if (m_lastRequest is null
-            || !ReferenceEquals(m_lastFrame, frame)
-            || m_lastViewport != viewport
-            || m_lastPriority != priority)
-        {
-            m_lastFrame = frame;
-            m_lastViewport = viewport;
-            m_lastPriority = priority;
-            m_lastRequest = new RenderRequest(
-                "2D/CameraStack",
-                RenderTarget.backbuffer,
-                viewport,
-                Rendering2DRenderer.sharedPipeline,
-                frame.data,
-                priority);
-        }
-        context.requests.Submit(m_lastRequest!);
+        return new RenderModelOutput("2D/CameraStack", Rendering2DRenderer.sharedPipeline,
+            frame.data);
     }
+
+    /// <inheritdoc />
+    public void Dispose() { }
 
     private void PublishPlanDiagnostics(IReadOnlyList<string> diagnostics)
     {
@@ -878,9 +1031,4 @@ public sealed class Rendering2DRequestProvider : RenderRequestProvider
             Log.Warn(diagnostic);
     }
 
-    private static int SaturatingPriority(int cameraPriority)
-    {
-        long combined = (long)Rendering2DIds.presentationOrder + cameraPriority;
-        return (int)Math.Clamp(combined, int.MinValue, int.MaxValue);
-    }
 }

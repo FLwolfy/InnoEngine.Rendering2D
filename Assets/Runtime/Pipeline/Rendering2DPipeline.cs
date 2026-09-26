@@ -99,7 +99,9 @@ public sealed class Rendering2DPipeline : RenderPipeline
                 pipelineState.sharedQuadIndices,
                 "2D shared quad indices");
 
-            PreparedBatch[] prepared = PrepareBatches(context, frame.batches);
+            var preparedByBatch = new Dictionary<Rendering2DDrawBatch, PreparedBatch>(ReferenceEqualityComparer.Instance);
+            PreparedBatch[] prepared = PrepareBatches(context, frame.batches, preparedByBatch);
+            PreparedSceneDraw[] sceneDraws = PrepareSceneDraws(context, frame, preparedByBatch);
             LightingFrameResources lighting = AddLightingPasses(
                 context,
                 frame,
@@ -129,6 +131,7 @@ public sealed class Rendering2DPipeline : RenderPipeline
                     frameIndex,
                     clearTarget,
                     prepared,
+                    sceneDraws,
                     lighting,
                     sharedVertices,
                     sharedIndices))
@@ -145,6 +148,7 @@ public sealed class Rendering2DPipeline : RenderPipeline
                     frameIndex,
                     clearTarget,
                     prepared,
+                    sceneDraws,
                     lighting,
                     sharedVertices,
                     sharedIndices))
@@ -161,6 +165,7 @@ public sealed class Rendering2DPipeline : RenderPipeline
                     frameIndex,
                     clearTarget,
                     prepared,
+                    sceneDraws,
                     lighting,
                     sharedVertices,
                     sharedIndices);
@@ -191,7 +196,8 @@ public sealed class Rendering2DPipeline : RenderPipeline
 
     private PreparedBatch[] PrepareBatches(
         RenderPipelineContext context,
-        IReadOnlyList<Rendering2DDrawBatch> batches)
+        IReadOnlyList<Rendering2DDrawBatch> batches,
+        Dictionary<Rendering2DDrawBatch, PreparedBatch> preparedByBatch)
     {
         var result = new List<PreparedBatch>(batches.Count);
         for (int index = 0; index < batches.Count; index++)
@@ -200,6 +206,36 @@ public sealed class Rendering2DPipeline : RenderPipeline
                 && prepared is not null)
             {
                 result.Add(prepared);
+                preparedByBatch.Add(batches[index], prepared);
+            }
+        }
+        return result.ToArray();
+    }
+
+    private static PreparedSceneDraw[] PrepareSceneDraws(
+        RenderPipelineContext context,
+        Rendering2DFrame frame,
+        IReadOnlyDictionary<Rendering2DDrawBatch, PreparedBatch> preparedByBatch)
+    {
+        var result = new List<PreparedSceneDraw>(frame.sceneDraws.Length);
+        var view = new RenderView(
+            $"2D/{frame.camera.identity.persistentId:D}",
+            new RenderViewport(0, 0, frame.pixelWidth, frame.pixelHeight),
+            frame.viewTransform,
+            frame.projectionTransform,
+            frame.camera.cullingMask.value);
+        foreach (Rendering2DSceneDraw draw in frame.sceneDraws)
+        {
+            if (draw.batch is Rendering2DDrawBatch batch)
+            {
+                if (preparedByBatch.TryGetValue(batch, out PreparedBatch? prepared))
+                    result.Add(new PreparedSceneDraw(prepared, null));
+            }
+            else if (draw.content is ViewContentItem item
+                     && item.drawable.TryPrepare(context, view, out IPreparedViewDrawable? drawable)
+                     && drawable is not null)
+            {
+                result.Add(new PreparedSceneDraw(null, drawable));
             }
         }
         return result.ToArray();
@@ -934,13 +970,14 @@ public sealed class Rendering2DPipeline : RenderPipeline
         int frameIndex,
         bool clearTarget,
         PreparedBatch[] prepared,
+        PreparedSceneDraw[] sceneDraws,
         LightingFrameResources lighting,
         PersistentBufferHandle sharedVertices,
         PersistentBufferHandle sharedIndices)
     {
         var passData = new PassData(
             state,
-            prepared,
+            sceneDraws,
             lighting,
             sharedVertices,
             sharedIndices,
@@ -962,6 +999,7 @@ public sealed class Rendering2DPipeline : RenderPipeline
         int frameIndex,
         bool clearTarget,
         PreparedBatch[] prepared,
+        PreparedSceneDraw[] sceneDraws,
         LightingFrameResources lighting,
         PersistentBufferHandle sharedVertices,
         PersistentBufferHandle sharedIndices)
@@ -975,7 +1013,7 @@ public sealed class Rendering2DPipeline : RenderPipeline
             "HDR Color");
         var passData = new PassData(
             state,
-            prepared,
+            sceneDraws,
             lighting,
             sharedVertices,
             sharedIndices,
@@ -1011,6 +1049,7 @@ public sealed class Rendering2DPipeline : RenderPipeline
         int frameIndex,
         bool clearTarget,
         PreparedBatch[] prepared,
+        PreparedSceneDraw[] sceneDraws,
         LightingFrameResources lighting,
         PersistentBufferHandle sharedVertices,
         PersistentBufferHandle sharedIndices)
@@ -1072,7 +1111,7 @@ public sealed class Rendering2DPipeline : RenderPipeline
             BatchBindingKind.Stencil);
         var maskedData = new MaskedPassData(
             state,
-            prepared,
+            sceneDraws,
             masks,
             stencilClear,
             lighting,
@@ -1240,9 +1279,34 @@ public sealed class Rendering2DPipeline : RenderPipeline
         ShaderPassRoleId role, out RenderMaterialPass? materialPass)
     {
         materialPass = null;
-        if (material?.shader is not { isMissing: false }) return false;
+        if (material?.shader is not { isMissing: false })
+        {
+            context.diagnostics.Publish(new Diagnostic(
+                "RENDERING_2D_INTERNAL_SHADER_MISSING",
+                $"The 2D pipeline has no usable shader for contract '{contract}' and role '{role}'. Check the pipeline asset's shader references.",
+                DiagnosticSeverity.Error,
+                Rendering2DIds.pipeline + "/" + contract + "/" + role));
+            return false;
+        }
         context.resourceService.PrewarmMaterial(material);
-        return context.resourceService.TryResolveGraphicsMaterial(material, contract, role, state.vertexLayout, state.emptyOverrides, out materialPass);
+        bool ready = context.resourceService.TryResolveGraphicsMaterial(material, contract, role,
+            state.vertexLayout, state.emptyOverrides, out materialPass);
+        if (!ready)
+        {
+            context.diagnostics.Publish(new Diagnostic(
+                "RENDERING_2D_INTERNAL_SHADER_NOT_READY",
+                $"The 2D pipeline shader '{material.shader.assetPath}' did not resolve contract '{contract}' and role '{role}'.",
+                DiagnosticSeverity.Error,
+                Rendering2DIds.pipeline + "/" + contract + "/" + role));
+        }
+        else
+        {
+            context.diagnostics.Resolve("RENDERING_2D_INTERNAL_SHADER_MISSING",
+                Rendering2DIds.pipeline + "/" + contract + "/" + role);
+            context.diagnostics.Resolve("RENDERING_2D_INTERNAL_SHADER_NOT_READY",
+                Rendering2DIds.pipeline + "/" + contract + "/" + role);
+        }
+        return ready;
     }
 
     private static void AttachOutput(
@@ -1273,8 +1337,13 @@ public sealed class Rendering2DPipeline : RenderPipeline
     {
         RenderViewport viewport = data.viewport;
         commands.SetViewport(viewport.x, viewport.y, viewport.width, viewport.height);
-        foreach (PreparedBatch batch in data.batches)
-            DrawBatch(batch, data.sharedVertices, data.sharedIndices, data.state, data.lighting, commands);
+        foreach (PreparedSceneDraw draw in data.draws)
+        {
+            if (draw.batch is PreparedBatch batch)
+                DrawBatch(batch, data.sharedVertices, data.sharedIndices, data.state, data.lighting, commands);
+            else
+                draw.drawable?.Encode(commands);
+        }
     }
 
     private static void ExecuteLights(LightPassData data, RenderCommandEncoder commands)
@@ -1323,8 +1392,17 @@ public sealed class Rendering2DPipeline : RenderPipeline
         commands.SetViewport(viewport.x, viewport.y, viewport.width, viewport.height);
         ulong preparedMaskSet = 0;
         bool stencilContainsMasks = false;
-        foreach (PreparedBatch batch in data.batches)
+        foreach (PreparedSceneDraw draw in data.draws)
         {
+            if (draw.batch is not PreparedBatch batch)
+            {
+                if (stencilContainsMasks)
+                    DrawStencilUtility(data.stencilClear, data.state.stencilClear, data, commands);
+                stencilContainsMasks = false;
+                commands.SetStencil(RenderStencilState.disabled);
+                draw.drawable?.Encode(commands);
+                continue;
+            }
             RenderStencilState stencil = RenderStencilState.disabled;
             if (batch.maskSet != 0 && batch.maskInteraction != SpriteMaskInteraction2D.None)
             {
@@ -1758,7 +1836,7 @@ public sealed class Rendering2DPipeline : RenderPipeline
 
     private sealed record PassData(
         PipelineState state,
-        PreparedBatch[] batches,
+        PreparedSceneDraw[] draws,
         LightingFrameResources lighting,
         PersistentBufferHandle sharedVertices,
         PersistentBufferHandle sharedIndices,
@@ -1766,7 +1844,7 @@ public sealed class Rendering2DPipeline : RenderPipeline
 
     private sealed record MaskedPassData(
         PipelineState state,
-        PreparedBatch[] batches,
+        PreparedSceneDraw[] draws,
         PreparedBatch?[] masks,
         PreparedBatch stencilClear,
         LightingFrameResources lighting,
@@ -1828,6 +1906,10 @@ public sealed class Rendering2DPipeline : RenderPipeline
         int lightingLayer,
         byte lightBlendStyles,
         BatchBindingKind bindingKind = BatchBindingKind.Sprite);
+
+    private readonly record struct PreparedSceneDraw(
+        PreparedBatch? batch,
+        IPreparedViewDrawable? drawable);
 
     private enum CompositeKind { Prefilter, Downsample, Upsample, Final }
 

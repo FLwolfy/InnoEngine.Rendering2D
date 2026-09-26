@@ -83,6 +83,11 @@ public sealed class SpriteRenderer2D : GameBehavior
     private byte m_lightBlendStyles = 0x0f;
     private float m_boundsPadding;
 
+    /// <summary>Allows pointer input to reach content drawn behind this sprite when enabled.</summary>
+    [SerializableProperty]
+    [Header("Interaction", "Controls scene pointer occlusion without changing the visible sprite.")]
+    public bool pointerPassThrough { get; set; }
+
     /// <summary>Gets or sets the stable atlas-region or standalone-texture reference.</summary>
     [SerializableProperty]
     [Header("Visual", "Choose an atlas region, standalone texture, or a procedural shape.")]

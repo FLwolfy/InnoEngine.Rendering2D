@@ -20,6 +20,7 @@ A source-based 2D rendering plugin for [InnoEngine](https://github.com/FLwolfy/I
   vignette, and pixelation
 - Deterministic CPU particles with fixed-seed simulation and instanced rendering
 - Stable sorting layers, shared-quad instancing, frustum culling, and bounded frame generation
+- World Canvas content interleaved with sprites through neutral `IViewContentSource` and the same 2D sorting groups
 - Straight alpha, premultiplied alpha, additive, multiply, and opaque material roles
 - CPU picking against the same immutable frame used by the Scene viewport
 - Scene and Game viewport integration, including pan, cursor-anchored zoom, framing, grid, and axes
@@ -28,9 +29,10 @@ A source-based 2D rendering plugin for [InnoEngine](https://github.com/FLwolfy/I
 - Plugin-owned project settings and native asset importers
 - Native Metal, D3D11, D3D12, and Vulkan smoke validation plus a self-hosted GPU CI matrix
 
-Physics, navigation, audio, gameplay UI, skeletal animation, SpriteShape, and Aseprite/PSD importing remain
-separate product lines. Text is deliberately split into future `Inno.Text` and `Inno.Text.Rendering2D` plugins;
-this repository does not embed FreeType, HarfBuzz, MSDF caches, font assets, or shaping policy. See the
+Physics, navigation, audio, skeletal animation, SpriteShape, and Aseprite/PSD importing remain
+separate product lines. The engine's text service and the Canvas plugin own UI fonts, layout, and glyphs;
+this 2D renderer consumes Canvas world drawables through the neutral view-content contract and does not
+depend on Canvas or embed font and shaping policy. See the
 [implementation status](Assets/Documentation/IMPLEMENTATION_STATUS.md) for the exact completed and pending milestones.
 
 ## Requirements
@@ -57,7 +59,7 @@ dotnet run --project ../InnoEngine/src/composition/editor/host/Inno.Editor.Appli
 
 The editor imports the authored content under `Assets/` and regenerates `Library/`, IDE project files, logs, and other local state. The same launch command accepts a project path with a trailing directory separator.
 
-The pipeline publishes diagnostics through `InnoEngine.Diagnostics.Diagnostic` and `DiagnosticSeverity`, using the reporter supplied by `RenderPipelineContext`. Scene input comes from the current identity-backed content scope; the plugin does not require an engine-owned 2D scene bridge or a native backend API.
+The pipeline publishes diagnostics through `InnoEngine.Diagnostics.Diagnostic` and `DiagnosticSeverity`, using the reporter supplied by `RenderPipelineContext`. `Rendering2DModel` accepts host `RenderOutputSession` values and publishes Camera2D output. Scene input comes from the identity-backed content scope; the plugin does not require an engine-owned 2D scene bridge or a native backend API.
 
 ## GPU validation
 
@@ -111,6 +113,7 @@ Material and suppresses that renderer with a diagnostic; the Pipeline never sile
 `SpriteRenderer2D.material`.
 
 Scenes without `Rendering2DSceneSystem` are skipped by this plugin, allowing 2D, 3D, and mixed scenes to coexist in the same project.
+World content from other plugins, including Canvas, enters the same camera view and sorting sequence through `IViewContentSource`. Rendering2D does not reference those plugins. When more than one render model accepts a host output, configure an exact `RenderOutputRoute` instead of relying on plugin order.
 
 ## Package and install
 
@@ -123,7 +126,7 @@ Builds/rendering2d.iplugin
 `Settings.Project.inno` explicitly owns the stable Project/Plugin ID `rendering2d`; it is not inferred again from the checkout directory name. The equivalent headless export uses the same engine build pipeline:
 
 ```bash
-dotnet run --project ../InnoEngine/build/pipeline/Inno.Build.Cli -- plugin --project . --output Builds/rendering2d.iplugin --display-name InnoEngine.Rendering2D
+dotnet run --project ../InnoEngine/src/composition/editor/host/Inno.Editor.Build.Cli -- plugin --project . --output Builds/rendering2d.iplugin --display-name InnoEngine.Rendering2D
 ```
 
 Install it in another Inno project by copying the complete package to that project's `Plugins/` directory:
@@ -153,7 +156,7 @@ Assets/
 ├── Runtime/
 │   ├── Assets/      Atlas, animation, tile set, and tilemap asset types
 │   ├── Components/  Camera, light, sprite, animator, and tilemap components
-│   ├── Pipeline/    Render request and pipeline integration
+│   ├── Pipeline/    Render model and pipeline integration
 │   ├── Runtime/     Immutable frame extraction and batching
 │   └── Systems/     Per-scene 2D extraction system
 ├── Shaders/

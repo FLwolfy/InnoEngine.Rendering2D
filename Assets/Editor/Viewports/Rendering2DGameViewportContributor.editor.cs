@@ -1,8 +1,6 @@
 using System;
-using System.Collections.Generic;
 using InnoEditor.Rendering;
 using InnoEngine.Rendering;
-using InnoEngine.Scene;
 
 namespace Inno.Rendering2D;
 
@@ -16,12 +14,7 @@ namespace Inno.Rendering2D;
     controllerPriority: 100)]
 public sealed class Rendering2DGameViewportContributor : EditorViewportContributor
 {
-    private RenderPipelineAsset pipeline => Rendering2DRenderer.ResolvePipeline();
-    private readonly Rendering2DSceneScopeCache m_scopeCache = new();
-    private readonly Rendering2DViewportOptions m_viewportOptions = new()
-    {
-        backbufferOnly = true
-    };
+    private readonly Rendering2DModel m_model = new();
 
     /// <summary>
     /// Determines whether the visible content contains at least one scene with an active 2D rendering model.
@@ -35,17 +28,7 @@ public sealed class Rendering2DGameViewportContributor : EditorViewportContribut
     public override bool CanContribute(EditorViewportContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        Rendering2DSceneScope scope = CreateScope(context);
-        for (int sceneIndex = 0; sceneIndex < scope.scenes.Count; sceneIndex++)
-        {
-            IReadOnlyList<GameSystem> systems = scope.scenes[sceneIndex].GetSystems();
-            for (int systemIndex = 0; systemIndex < systems.Count; systemIndex++)
-            {
-                if (systems[systemIndex] is Rendering2DSceneSystem { isActiveAndEnabled: true })
-                    return true;
-            }
-        }
-        return false;
+        return m_model.CanRender(Session(context));
     }
 
     /// <summary>
@@ -63,17 +46,12 @@ public sealed class Rendering2DGameViewportContributor : EditorViewportContribut
     public override EditorViewportContribution Build(EditorViewportContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        Rendering2DSceneScope scope = CreateScope(context);
-        Rendering2DViewportFrame frame = Rendering2DRenderer.CreateCameraStackFrame(
-            scope,
-            context.pixelWidth,
-            context.pixelHeight,
-            m_viewportOptions);
-        return new EditorViewportContribution(
-            frame.data,
-            pipeline);
+        RenderModelOutput output = m_model.Build(Session(context));
+        return new EditorViewportContribution(output.data, output.pipeline, output.targetFormat);
     }
 
-    private Rendering2DSceneScope CreateScope(EditorViewportContext context)
-        => m_scopeCache.Get(context.content);
+    private static RenderOutputSession Session(EditorViewportContext context)
+        => new(context.viewportId, context.content,
+            new RenderViewport(0, 0, context.pixelWidth, context.pixelHeight),
+            context.frameIndex, 0f, context.viewContent, context.input);
 }

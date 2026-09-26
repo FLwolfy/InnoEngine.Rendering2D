@@ -16,8 +16,8 @@ public static class Rendering2DIds
     /// <summary>Gets the project-wide Rendering2D settings protocol identity.</summary>
     public const string projectSettings = "inno.rendering.2d";
 
-    /// <summary>Gets the automatic backbuffer request provider identity.</summary>
-    public const string requestProvider = "inno.rendering.2d.request-provider";
+    /// <summary>Gets the 2D rendering model identity.</summary>
+    public const string renderModel = "inno.rendering.2d.model";
 
     /// <summary>Gets the complete explicit-stage Sprite Shader graph template identity.</summary>
     public const string spriteShaderTemplate = "inno.rendering.2d.sprite-template";

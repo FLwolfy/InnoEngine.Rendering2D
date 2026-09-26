@@ -98,6 +98,10 @@ public sealed class Rendering2DSceneViewportContributor : EditorViewportContribu
         camera.orthographicSize = context.navigation.orthographicSize;
         camera.pixelPerfect = false;
         m_viewportOptions.clearColorOverride = context.presentation.backgroundColor;
+        m_viewportOptions.viewContent = context.viewContent;
+        m_viewportOptions.sessionId = context.viewportId;
+        m_viewportOptions.content = context.content;
+        m_viewportOptions.frameIndex = context.frameIndex;
         m_latestFrame = Rendering2DRenderer.CreateViewportFrame(
             scope,
             camera,
